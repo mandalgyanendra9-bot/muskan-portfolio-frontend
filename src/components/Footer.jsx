@@ -4,7 +4,7 @@ const Footer = () => {
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center space-y-6 md:space-y-0">
         <div>
           <span className="text-xl font-bold text-gradient">MUSKAN.</span>
-          <p className="text-slate-400 text-sm mt-2">© 2024 Building premium digital experiences.</p>
+          <p className="text-slate-400 text-sm mt-2">© 2026 Building premium digital experiences.</p>
         </div>
         <div className="flex space-x-6 text-sm text-slate-400">
           <a href="#" className="hover:text-white transition-colors">Twitter</a>
