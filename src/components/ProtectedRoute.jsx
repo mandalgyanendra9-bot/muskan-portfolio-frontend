@@ -1,7 +1,8 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import toast from 'react-hot-toast';
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -12,7 +13,12 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" />;
   }
 
+  if (adminOnly && user.role !== 'admin') {
+    toast.error("Access Denied: Administrator privileges required.");
+    return <Navigate to="/dashboard" />;
+  }
+
   return children;
 };
 
-export default ProtectedRoute
+export default ProtectedRoute;
