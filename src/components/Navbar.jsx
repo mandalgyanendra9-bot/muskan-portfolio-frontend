@@ -55,16 +55,22 @@ const Navbar = () => {
               <Link to="/dashboard" className="text-sm font-bold text-slate-300 hover:text-primary-400 transition-colors hidden sm:block">
                 Dashboard
               </Link>
-              
-              {/* Profile Image (Click to Upload/Profile) */}
-              <Link to="/upload" className="relative group">
+              {/* My Profile Link (Desktop) */}
+              <Link to="/profile" className="text-sm font-bold text-slate-300 hover:text-primary-400 transition-colors hidden sm:block">
+                My Profile
+              </Link>
+
+              {/* Avatar → Profile Page */}
+              <Link to="/profile" className="relative group">
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-primary-500/50 group-hover:border-primary-500 transition-all overflow-hidden bg-white/5">
-                  <img 
-                    src={user.profileImage ? `${import.meta.env.VITE_API_URL}${user.profileImage}` : "https://via.placeholder.com/150"} 
-                    alt="Profile" 
-                    className="w-full h-full object-cover"
-                  />
+                  {user.profileImage ? (
+                    <img src={user.profileImage.startsWith("http") ? user.profileImage : `${import.meta.env.VITE_API_URL}${user.profileImage}`} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-primary-500/20 flex items-center justify-center text-primary-400 font-bold text-sm">{user.name?.[0]?.toUpperCase()}</div>
+                  )}
                 </div>
+                {/* Online indicator */}
+                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-[#0f172a] bg-emerald-500" />
               </Link>
 
               {/* Logout (Desktop) */}
@@ -121,6 +127,9 @@ const Navbar = () => {
               <>
                 <Link to="/dashboard" onClick={() => setMenuOpen(false)} className="text-base font-bold text-primary-400 py-2 border-b border-white/5">
                   Dashboard
+                </Link>
+                <Link to="/profile" onClick={() => setMenuOpen(false)} className="text-base font-bold text-slate-300 hover:text-primary-400 py-2 border-b border-white/5 transition-colors">
+                  My Profile
                 </Link>
                 <button
                   onClick={handleLogout}

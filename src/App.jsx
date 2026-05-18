@@ -16,6 +16,12 @@ import UploadDP from "./pages/UploadDP";
 import ExpertDetail from "./pages/ExpertDetail";
 import VideoCall from "./pages/VideoCall";
 
+// ─── Auth Pages ───────────────────────────────────────────────────────────────
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+import VerifyEmail from "./pages/VerifyEmail";
+import Profile from "./pages/Profile";
+
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
@@ -27,8 +33,23 @@ function App() {
       <Route path="/blog" element={<Blog />} />
       <Route path="/experts" element={<Experts />} />
       <Route path="/contact" element={<Contact />} />
+
+      {/* ── Auth ─────────────────────────────────────────────────────────── */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password/:token" element={<ResetPassword />} />
+      <Route path="/verify-email/:token" element={<VerifyEmail />} />
+
+      {/* ── Protected ─────────────────────────────────────────────────────── */}
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Profile />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/dashboard"
         element={

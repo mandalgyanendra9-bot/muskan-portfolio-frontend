@@ -138,6 +138,11 @@ const ExpertDetail = () => {
                   <span className="bg-yellow-400/10 border border-yellow-400/20 text-yellow-400 px-3.5 py-1.5 rounded-full text-sm font-bold flex items-center gap-1">
                     ★ {expert.rating || "5.0"} <span className="text-slate-500 font-medium">({expert.reviewsCount || 0})</span>
                   </span>
+                  {expert.category && (
+                    <span className="bg-primary-500/10 border border-primary-500/20 text-primary-300 px-3.5 py-1.5 rounded-full text-xs font-bold">
+                      {expert.category}
+                    </span>
+                  )}
                 </div>
                 <p className="text-2xl text-primary-400 font-semibold mt-1">{expert.title}</p>
                 {expert.experience && <p className="text-sm text-slate-400 mt-0.5">Experience: {expert.experience}</p>}
@@ -181,10 +186,16 @@ const ExpertDetail = () => {
                   <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">Hourly rate</p>
                   <p className="text-3xl font-extrabold text-white">₹{expert.hourlyRate}<span className="text-lg text-slate-400 font-medium">/hr</span></p>
                 </div>
-                <button 
+                {expert.pricePerMinute > 0 && (
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">Per minute</p>
+                    <p className="text-2xl font-extrabold text-emerald-400">₹{expert.pricePerMinute}<span className="text-base text-slate-400 font-medium">/min</span></p>
+                  </div>
+                )}
+                <button
                   onClick={handleBookingClick}
                   disabled={!expert.isAvailable}
-                  className="w-full sm:w-auto px-8 py-4.5 bg-gradient-to-r from-primary-500 to-accent hover:from-primary-600 hover:to-violet-600 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-600 disabled:border-slate-800 text-white font-extrabold rounded-2xl shadow-xl shadow-primary-500/20 transition-all active:scale-95 tracking-wide text-sm uppercase"
+                  className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-primary-500 to-accent hover:from-primary-600 hover:to-violet-600 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-600 text-white font-extrabold rounded-2xl shadow-xl shadow-primary-500/20 transition-all active:scale-95 tracking-wide text-sm uppercase"
                 >
                   {expert.isAvailable ? "Book Consultation" : "Offline / Unavailable"}
                 </button>
@@ -192,6 +203,60 @@ const ExpertDetail = () => {
             </div>
           </div>
         </div>
+
+        {/* Intro Video */}
+        {expert.introVideo && (
+          <div className="mb-16">
+            <h2 className="text-3xl font-bold text-white mb-8 border-b border-white/10 pb-4 flex items-center gap-3">
+              <span>🎬 Intro Reel</span>
+            </h2>
+            <div className="relative rounded-[2rem] overflow-hidden border border-white/10 shadow-2xl" style={{ paddingBottom: "56.25%" }}>
+              <iframe
+                className="absolute inset-0 w-full h-full"
+                src={expert.introVideo.replace("watch?v=", "embed/").replace("youtu.be/", "www.youtube.com/embed/").replace("vimeo.com/", "player.vimeo.com/video/")}
+                title="Expert Intro Video"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Availability Schedule */}
+        {expert.availabilitySchedule?.some(d => d.available) && (
+          <div className="mb-16">
+            <h2 className="text-3xl font-bold text-white mb-8 border-b border-white/10 pb-4">📅 Availability</h2>
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {expert.availabilitySchedule.filter(d => d.available).map(d => (
+                <div key={d.day} className="glass p-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5">
+                  <p className="font-bold text-emerald-300 text-sm">{d.day}</p>
+                  <p className="text-slate-400 text-xs mt-1">{d.from} — {d.to}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Portfolio Gallery */}
+        {expert.portfolioGallery?.length > 0 && (
+          <div className="mb-16">
+            <h2 className="text-3xl font-bold text-white mb-8 border-b border-white/10 pb-4 flex items-center justify-between">
+              <span>🖼️ Gallery</span>
+              <span className="text-xs bg-white/5 text-slate-400 px-3 py-1.5 rounded-full border border-white/5">{expert.portfolioGallery.length} photos</span>
+            </h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {expert.portfolioGallery.map((img, i) => (
+                <div key={i} className="aspect-square rounded-2xl overflow-hidden border border-white/10 group cursor-zoom-in">
+                  <img
+                    src={img.startsWith("http") ? img : `${import.meta.env.VITE_API_URL}${img}`}
+                    alt={`Gallery ${i + 1}`}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Portfolio / Projects Grid */}
         <div className="mb-16">
