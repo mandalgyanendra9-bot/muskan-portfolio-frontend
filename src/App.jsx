@@ -13,6 +13,8 @@ import Admin from "./pages/Admin";
 import Messages from "./pages/Messages";
 import ManageProjects from "./pages/ManageProjects";
 import UploadDP from "./pages/UploadDP";
+import ExpertDetail from "./pages/ExpertDetail";
+import VideoCall from "./pages/VideoCall";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -56,6 +58,15 @@ function App() {
         element={
           <ProtectedRoute>
             <ManageProjects />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/expert/:id" element={<ExpertDetail />} />
+      <Route
+        path="/video-call/:roomId"
+        element={
+          <ProtectedRoute>
+            <VideoCall />
           </ProtectedRoute>
         }
       />

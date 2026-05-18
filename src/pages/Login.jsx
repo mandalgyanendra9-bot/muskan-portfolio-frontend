@@ -25,7 +25,8 @@ const Login = () => {
       navigate("/dashboard");
     } catch (error) {
       console.log(error);
-      toast.error("Login Failed");
+      const errMsg = error.response?.data?.message || "Login Failed";
+      toast.error(errMsg);
     }
   };
 

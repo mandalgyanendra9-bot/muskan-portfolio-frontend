@@ -11,6 +11,7 @@ const Register = () => {
     name: "",
     email: "",
     password: "",
+    role: "client"
   });
 
   const handleSubmit = async (e) => {
@@ -20,7 +21,9 @@ const Register = () => {
       toast.success("Registration Successful");
       navigate("/login");
     } catch (error) {
-      toast.error("Registration Failed");
+      console.log(error);
+      const errMsg = error.response?.data?.message || "Registration Failed";
+      toast.error(errMsg);
     }
   };
 
@@ -34,7 +37,7 @@ const Register = () => {
         <div className="w-full max-w-md glass p-10 rounded-[2rem] border-white/5 shadow-2xl">
           <div className="text-center mb-10">
             <h2 className="text-3xl font-bold mb-2">Join Us</h2>
-            <p className="text-slate-400">Create your account to start building your portfolio</p>
+            <p className="text-slate-400">Create your account to start hiring or offering services</p>
           </div>
           
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -78,11 +81,11 @@ const Register = () => {
               <label className="text-sm font-medium text-slate-300 ml-1">Account Type</label>
               <select
                 className="w-full bg-[#0f172a] border border-white/10 rounded-xl px-5 py-3 focus:outline-none focus:border-primary-500 transition-all text-white"
-                value={form.role || "user"}
+                value={form.role}
                 onChange={(e) => setForm({ ...form, role: e.target.value })}
               >
-                <option value="user">Regular User</option>
-                <option value="expert">Expert</option>
+                <option value="client">Client (Hire & Book Experts)</option>
+                <option value="expert">Expert (Offer Consulting/Development Services)</option>
               </select>
             </div>
 
