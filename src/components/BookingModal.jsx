@@ -10,7 +10,7 @@ const BookingModal = ({ expert, onClose }) => {
     expert: expert._id,
     date: "",
     duration: 1,
-    totalPrice: expert.hourlyRate,
+    totalPrice: expert.hourlyRate || 500, // Fallback if hourly rate is 0/undefined
     notes: ""
   });
 
@@ -29,7 +29,7 @@ const BookingModal = ({ expert, onClose }) => {
     setBookingData({
       ...bookingData,
       duration,
-      totalPrice: duration * expert.hourlyRate
+      totalPrice: duration * (expert.hourlyRate || 500) // Fallback if hourly rate is 0/undefined
     });
   };
 
@@ -155,6 +155,7 @@ const BookingModal = ({ expert, onClose }) => {
               bookingData={bookingData} 
               onSuccess={() => {
                 onClose();
+                window.location.href = "/dashboard";
               }}
             />
           ) : (
