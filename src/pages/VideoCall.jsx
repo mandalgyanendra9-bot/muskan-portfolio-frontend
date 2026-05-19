@@ -22,9 +22,11 @@ const VideoCall = () => {
     { sender: "System", text: "Welcome to your virtual meeting room. Secure WebRTC connection established.", time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
   ]);
   const [inputText, setInputText] = useState("");
+  const [callTimer, setCallTimer] = useState(0);
 
   const localVideoRef = useRef(null);
   const streamRef = useRef(null);
+  const screenStreamRef = useRef(null);
 
   // Initialize webcam
   useEffect(() => {
@@ -52,6 +54,57 @@ const VideoCall = () => {
       }
     };
   }, [camActive]);
+
+  // Call Timer
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCallTimer(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatTime = (seconds) => {
+    const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+    const s = (seconds % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
+
+  // Handle Screen Share
+  const toggleScreenShare = async () => {
+    try {
+      if (!screenSharing) {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        screenStreamRef.current = screenStream;
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = screenStream;
+        }
+        setScreenSharing(true);
+        toast.success("Screen sharing started");
+
+        // Listen for user stopping screen share via browser UI
+        screenStream.getVideoTracks()[0].onended = () => {
+          stopScreenShare();
+        };
+      } else {
+        stopScreenShare();
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to share screen");
+      setScreenSharing(false);
+    }
+  };
+
+  const stopScreenShare = () => {
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => track.stop());
+    }
+    if (localVideoRef.current && streamRef.current) {
+      localVideoRef.current.srcObject = streamRef.current;
+    }
+    setScreenSharing(false);
+    toast.success("Screen sharing stopped");
+  };
 
   // Handle send message
   const handleSendMessage = (e) => {
@@ -90,7 +143,10 @@ const VideoCall = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
     }
-    toast.success("Call ended successfully.");
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach(track => track.stop());
+    }
+    toast.success(`Call ended successfully. Duration: ${formatTime(callTimer)}`);
     
     // Redirect to dashboard with reviewTrigger state if client leaves
     if (user?.role === "client" || user?.role === "user") {
@@ -106,7 +162,10 @@ const VideoCall = () => {
       <div className="bg-slate-900 border-b border-white/5 py-4 px-6 flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
           <div className="w-3 h-3 bg-emerald-500 rounded-full animate-ping" />
-          <span className="font-mono text-sm tracking-wider text-slate-400">ROOM ID: {roomId}</span>
+          <span className="font-mono text-sm tracking-wider text-slate-400">ROOM: {roomId}</span>
+          <span className="ml-4 font-mono text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full text-sm font-bold border border-emerald-500/20">
+            ⏳ {formatTime(callTimer)}
+          </span>
         </div>
         <div className="flex items-center gap-6">
           <h2 className="text-lg font-bold text-gradient">Virtual WorkSpace</h2>
@@ -206,12 +265,9 @@ const VideoCall = () => {
 
             {/* Screen Share */}
             <button 
-              onClick={() => {
-                setScreenSharing(!screenSharing);
-                toast.success(screenSharing ? "Stopped screen share" : "Screen sharing mock started successfully");
-              }}
+              onClick={toggleScreenShare}
               className={`p-4 rounded-2xl transition-all active:scale-95 ${screenSharing ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400' : 'bg-white/5 hover:bg-white/10 text-white'}`}
-              title="Share Screen"
+              title={screenSharing ? "Stop Sharing" : "Share Screen"}
             >
               🖥️
             </button>
