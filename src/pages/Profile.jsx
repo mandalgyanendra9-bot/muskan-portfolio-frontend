@@ -227,7 +227,7 @@ const Profile = () => {
 
         {/* ── Tabs ─────────────────────────────────────────────────────── */}
         <div className="flex gap-2 mb-6 border-b border-white/5 pb-4">
-          {["profile", ...(form.role === "expert" || user?.role === "expert" ? ["reviews"] : [])].map(tab => (
+          {["profile", ...(user?.role === "expert" ? ["reviews"] : [])].map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-5 py-2.5 rounded-xl font-bold text-sm capitalize transition-all ${activeTab === tab ? "bg-primary-500 text-white shadow-lg shadow-primary-500/20" : "bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"}`}>
               {tab === "reviews" ? `⭐ My Reviews (${reviews.length || user?.reviewsCount || 0})` : "✏️ Edit Profile"}
@@ -239,35 +239,27 @@ const Profile = () => {
         {activeTab === "profile" && (
           <form onSubmit={handleSave} className="space-y-6">
 
-            {/* ── Account Type / Role Toggle ──────────────────────────────── */}
-            <div className="glass p-8 rounded-[2rem] border-white/5 space-y-4 bg-gradient-to-br from-primary-500/5 to-purple-500/5">
-              <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                    {form.role === "expert" ? "🌟 Expert Account" : "👤 Client Account"}
-                  </h2>
-                  <p className="text-slate-400 text-sm mt-1">
-                    {form.role === "expert" 
-                      ? "You are currently an Expert. You can set pricing, availability, and receive bookings." 
-                      : "Switch to an Expert account to set pricing, upload a gallery, and receive bookings from clients."}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newRole = form.role === "expert" ? "client" : "expert";
-                    setForm(f => ({ ...f, role: newRole }));
-                    toast.success(`Account type switched to ${newRole}. Don't forget to save!`);
-                  }}
-                  className={`px-6 py-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap border shadow-lg ${
-                    form.role === "expert" 
-                      ? "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700" 
-                      : "bg-gradient-to-r from-primary-500 to-purple-600 border-primary-500/50 text-white shadow-primary-500/20 hover:from-primary-600 hover:to-purple-700"
-                  }`}
-                >
-                  {form.role === "expert" ? "Switch back to Client" : "🚀 Become an Expert"}
-                </button>
+            {/* Role Switcher */}
+            <div className="glass p-8 rounded-[2rem] border-emerald-500/20 bg-emerald-500/5 flex flex-col md:flex-row items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-emerald-300">Account Type: {form.role === "expert" ? "Expert / Creator" : "Client"}</h2>
+                <p className="text-slate-400 text-sm mt-1">
+                  {form.role === "expert" 
+                    ? "You are an Expert! You can set your pricing, schedule, and receive bookings." 
+                    : "Become an Expert to set pricing, upload a portfolio gallery, and receive bookings!"}
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, role: f.role === "expert" ? "client" : "expert" }))}
+                className={`px-6 py-3 rounded-xl font-bold text-sm transition-all active:scale-95 whitespace-nowrap ${
+                  form.role === "expert" 
+                    ? "bg-slate-700 hover:bg-slate-600 text-white" 
+                    : "bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20"
+                }`}
+              >
+                {form.role === "expert" ? "Switch to Client" : "🚀 Become an Expert"}
+              </button>
             </div>
 
             {/* Basic Info */}
@@ -425,7 +417,6 @@ const Profile = () => {
             )}
 
             {/* ── Portfolio Gallery ─────────────────────────────────────── */}
-            {form.role === "expert" && (
             <div className="glass p-8 rounded-[2rem] border-white/5 space-y-5">
               <div className="flex items-center justify-between border-b border-white/5 pb-3">
                 <h2 className="text-lg font-bold text-white">🖼️ Portfolio Gallery</h2>
@@ -453,7 +444,6 @@ const Profile = () => {
                 </div>
               )}
             </div>
-            )}
 
             {/* Save */}
             <button

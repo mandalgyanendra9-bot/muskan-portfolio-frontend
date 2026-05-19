@@ -55,6 +55,10 @@ const Navbar = () => {
               <Link to="/dashboard" className="text-sm font-bold text-slate-300 hover:text-primary-400 transition-colors hidden sm:block">
                 Dashboard
               </Link>
+              {/* Billing Link (Desktop) */}
+              <Link to="/billing" className="text-sm font-bold text-slate-300 hover:text-primary-400 transition-colors hidden sm:block">
+                Billing
+              </Link>
               {/* My Profile Link (Desktop) */}
               <Link to="/profile" className="text-sm font-bold text-slate-300 hover:text-primary-400 transition-colors hidden sm:block">
                 My Profile
@@ -127,6 +131,9 @@ const Navbar = () => {
               <>
                 <Link to="/dashboard" onClick={() => setMenuOpen(false)} className="text-base font-bold text-primary-400 py-2 border-b border-white/5">
                   Dashboard
+                </Link>
+                <Link to="/billing" onClick={() => setMenuOpen(false)} className="text-base font-bold text-slate-300 hover:text-primary-400 py-2 border-b border-white/5 transition-colors">
+                  Billing
                 </Link>
                 <Link to="/profile" onClick={() => setMenuOpen(false)} className="text-base font-bold text-slate-300 hover:text-primary-400 py-2 border-b border-white/5 transition-colors">
                   My Profile
