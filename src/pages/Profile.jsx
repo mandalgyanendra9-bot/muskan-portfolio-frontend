@@ -60,6 +60,7 @@ const Profile = () => {
     portfolio: user?.portfolio || "",
     introVideo: user?.introVideo || "",
     isAvailable: user?.isAvailable !== false,
+    role: user?.role || "client",
   });
 
   useEffect(() => {
@@ -226,7 +227,7 @@ const Profile = () => {
 
         {/* ── Tabs ─────────────────────────────────────────────────────── */}
         <div className="flex gap-2 mb-6 border-b border-white/5 pb-4">
-          {["profile", ...(user?.role === "expert" ? ["reviews"] : [])].map(tab => (
+          {["profile", ...(form.role === "expert" || user?.role === "expert" ? ["reviews"] : [])].map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-5 py-2.5 rounded-xl font-bold text-sm capitalize transition-all ${activeTab === tab ? "bg-primary-500 text-white shadow-lg shadow-primary-500/20" : "bg-white/5 text-slate-400 hover:text-white hover:bg-white/10"}`}>
               {tab === "reviews" ? `⭐ My Reviews (${reviews.length || user?.reviewsCount || 0})` : "✏️ Edit Profile"}
@@ -237,6 +238,37 @@ const Profile = () => {
         {/* ── Edit Profile Tab ──────────────────────────────────────────── */}
         {activeTab === "profile" && (
           <form onSubmit={handleSave} className="space-y-6">
+
+            {/* ── Account Type / Role Toggle ──────────────────────────────── */}
+            <div className="glass p-8 rounded-[2rem] border-white/5 space-y-4 bg-gradient-to-br from-primary-500/5 to-purple-500/5">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    {form.role === "expert" ? "🌟 Expert Account" : "👤 Client Account"}
+                  </h2>
+                  <p className="text-slate-400 text-sm mt-1">
+                    {form.role === "expert" 
+                      ? "You are currently an Expert. You can set pricing, availability, and receive bookings." 
+                      : "Switch to an Expert account to set pricing, upload a gallery, and receive bookings from clients."}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newRole = form.role === "expert" ? "client" : "expert";
+                    setForm(f => ({ ...f, role: newRole }));
+                    toast.success(`Account type switched to ${newRole}. Don't forget to save!`);
+                  }}
+                  className={`px-6 py-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap border shadow-lg ${
+                    form.role === "expert" 
+                      ? "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700" 
+                      : "bg-gradient-to-r from-primary-500 to-purple-600 border-primary-500/50 text-white shadow-primary-500/20 hover:from-primary-600 hover:to-purple-700"
+                  }`}
+                >
+                  {form.role === "expert" ? "Switch back to Client" : "🚀 Become an Expert"}
+                </button>
+              </div>
+            </div>
 
             {/* Basic Info */}
             <div className="glass p-8 rounded-[2rem] border-white/5 space-y-5">
@@ -261,7 +293,7 @@ const Profile = () => {
                   <input placeholder="e.g. 3+ Years" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary-500 transition-all text-sm placeholder-slate-600" value={form.experience} onChange={e => setForm(f => ({ ...f, experience: e.target.value }))} />
                 </div>
               </div>
-              {user?.role === "expert" && (
+              {form.role === "expert" && (
                 <div className="grid md:grid-cols-2 gap-5">
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Hourly Rate (₹/hr)</label>
@@ -289,7 +321,7 @@ const Profile = () => {
             </div>
 
             {/* ── Expert Settings ───────────────────────────────────────── */}
-            {user?.role === "expert" && (
+            {form.role === "expert" && (
               <div className="glass p-8 rounded-[2rem] border-white/5 space-y-5">
                 <h2 className="text-lg font-bold text-white border-b border-white/5 pb-3">🎯 Expert Settings</h2>
                 <div className="grid md:grid-cols-2 gap-5">
@@ -367,7 +399,7 @@ const Profile = () => {
             </div>
 
             {/* ── Availability Schedule ─────────────────────────────────── */}
-            {user?.role === "expert" && (
+            {form.role === "expert" && (
               <div className="glass p-8 rounded-[2rem] border-white/5 space-y-4">
                 <h2 className="text-lg font-bold text-white border-b border-white/5 pb-3">📅 Availability Schedule</h2>
                 <div className="space-y-3">
@@ -393,6 +425,7 @@ const Profile = () => {
             )}
 
             {/* ── Portfolio Gallery ─────────────────────────────────────── */}
+            {form.role === "expert" && (
             <div className="glass p-8 rounded-[2rem] border-white/5 space-y-5">
               <div className="flex items-center justify-between border-b border-white/5 pb-3">
                 <h2 className="text-lg font-bold text-white">🖼️ Portfolio Gallery</h2>
@@ -420,6 +453,7 @@ const Profile = () => {
                 </div>
               )}
             </div>
+            )}
 
             {/* Save */}
             <button
