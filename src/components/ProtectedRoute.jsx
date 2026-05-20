@@ -1,6 +1,5 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import toast from 'react-hot-toast';
 
 const ProtectedRoute = ({ children, adminOnly = false }) => {
   const { user, loading } = useAuth();
@@ -13,9 +12,9 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
     return <Navigate to="/login" />;
   }
 
-  if (adminOnly && !(user?.role?.toLowerCase() === 'admin' || user?.isAdmin)) {
-    toast.error("Access Denied: Administrator privileges required.");
-    return <Navigate to="/dashboard" />;
+  if (adminOnly && !(user?.isAdmin || user?.role?.trim()?.toLowerCase() === 'admin')) {
+    // Not an admin – redirect to dashboard
+    return <Navigate to="/dashboard" replace />;
   }
 
   return children;

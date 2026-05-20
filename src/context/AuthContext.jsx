@@ -24,8 +24,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   const updateUser = (data) => {
-    localStorage.setItem("user", JSON.stringify(data));
-    setUser(data);
+    const enriched = {
+      ...data,
+      isAdmin: data?.role?.toLowerCase() === 'admin' || data?.isAdmin || false,
+    };
+    localStorage.setItem("user", JSON.stringify(enriched));
+    setUser(enriched);
   };
 
   const logout = () => {
