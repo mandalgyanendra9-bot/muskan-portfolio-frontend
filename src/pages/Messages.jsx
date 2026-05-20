@@ -152,8 +152,10 @@ const Messages = () => {
     setShowEmoji(false);
   };
 
-  const onEmojiClick = (e, emojiObject) => {
-    setInput((prev) => prev + emojiObject.emoji);
+  const onEmojiClick = (emojiObject, e) => {
+    if (emojiObject?.emoji) {
+      setInput((prev) => prev + emojiObject.emoji);
+    }
   };
 
   const renderMessage = (msg) => {
