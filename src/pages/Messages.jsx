@@ -117,20 +117,20 @@ const Messages = () => {
 
   // ----- Handlers -----
   const sendMessage = async () => {
-    if (!socket) return;
+    if (!socket || !currentUserId || !otherId) return;
     let payload = {};
     if (imageFile) {
       const form = new FormData();
       form.append('image', imageFile);
       try {
         const uploadRes = await axios.post(`${import.meta.env.VITE_API_URL}/api/chat/upload-image`, form, {
-          headers: { 'Content-Type': 'multipart/form-data' },
+          headers: { 'Content-Type': 'multipart/form-data' }
         });
         payload = {
           sender: currentUserId,
           recipient: otherId,
           messageType: 'image',
-          message: uploadRes.data.imageUrl,
+          message: uploadRes.data.imageUrl || uploadRes.data.url,
         };
       } catch (err) {
         console.error('Image upload failed', err);
@@ -150,6 +150,8 @@ const Messages = () => {
     setInput('');
     setImageFile(null);
     setShowEmoji(false);
+    const fileInput = document.getElementById('imageUpload');
+    if (fileInput) fileInput.value = '';
   };
 
   const onEmojiClick = (emojiObject, e) => {
@@ -192,19 +194,24 @@ const Messages = () => {
           </div>
         )}
         <input
-          type="file"
-          accept="image/*"
-          style={{ display: 'none' }}
-          id="imageUpload"
-          onChange={(e) => setImageFile(e.target.files[0])}
-        />
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: 'none' }}
+            id="imageUpload"
+            onChange={(e) => {
+              const file = e.target.files[0];
+              if (file) setImageFile(file);
+            }}
+          />
         <button onClick={() => setShowEmoji((prev) => !prev)} className="emoji-btn">😀</button>
-        <button onClick={() => document.getElementById('imageUpload').click()} className="image-btn">📷</button>
+          <button onClick={() => document.getElementById('imageUpload').click()} className="image-btn" aria-label="Upload image">📷</button>
         <input
           type="text"
           placeholder="Type a message..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
           className="message-input"
         />
         <button onClick={sendMessage} className="send-btn">Send</button>

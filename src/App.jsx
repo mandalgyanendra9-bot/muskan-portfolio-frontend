@@ -21,6 +21,8 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import VerifyEmail from "./pages/VerifyEmail";
 import Profile from "./pages/Profile";
+import { NotificationProvider } from './context/NotificationContext';
+import NotificationToast from './components/NotificationToast';
 import Billing from "./pages/Billing";
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -29,13 +31,6 @@ import { ChatProvider } from "./context/ChatContext";
 function App() {
   return (
     <ChatProvider>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/about" element={<About />} />
-        <Route path="/projects" element={<Projects />} />
-        <Route path="/blog" element={<Blog />} />
-        <Route path="/experts" element={<Experts />} />
-        <Route path="/contact" element={<Contact />} />
 
         {/* ── Auth ─────────────────────────────────────────────────────────── */}
         <Route path="/login" element={<Login />} />
@@ -111,6 +106,7 @@ function App() {
           }
         />
       </Routes>
+        </NotificationProvider>
     </ChatProvider>
   );
 }
