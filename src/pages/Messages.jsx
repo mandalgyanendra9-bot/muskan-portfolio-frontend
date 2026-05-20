@@ -6,22 +6,27 @@ import EmojiPicker from 'emoji-picker-react';
 import './Messages.css';
 
 const Messages = () => {
+  // ----- Params & Context -----
   const { otherId } = useParams(); // ID of the user we are chatting with
   const { socket } = useChat();
+
+  // ----- State -----
   const [messages, setMessages] = useState([]);
-  if (!socket) return <div className="chat-loading">Connecting to chat...</div>;
+  const [input, setInput] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
   const [imageFile, setImageFile] = useState(null);
   const [typingUsers, setTypingUsers] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(null);
 
+  // ----- Refs -----
   const messagesEndRef = useRef(null);
 
-  // Helper to scroll to latest message
+  // ----- Helpers -----
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // ----- Effects (must be declared before any conditional return) -----
   // Load current user ID (example: from localStorage)
   useEffect(() => {
     const stored = localStorage.getItem('userId');
@@ -35,43 +40,35 @@ const Messages = () => {
     }
   }, [socket, currentUserId]);
 
-  // Fetch chat history
+  // Fetch chat history whenever IDs are ready
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const res = await axios.get(`/api/chat/messages/${currentUserId}/${otherId}`);
+        const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/chat/messages/${currentUserId}/${otherId}`);
         setMessages(res.data);
       } catch (err) {
         console.error('Failed to fetch messages', err);
       }
     };
-    if (currentUserId && otherId) fetchHistory();
+    if (currentUserId && otherId) {
+      fetchHistory();
+    }
   }, [currentUserId, otherId]);
 
-  // Socket listeners
+  // Socket listeners (new messages, typing, seen status)
   useEffect(() => {
     if (!socket) return;
 
-    const handleNewMessage = (msg) => {
-      setMessages((prev) => [...prev, msg]);
-    };
-
+    const handleNewMessage = (msg) => setMessages((prev) => [...prev, msg]);
     const handleTyping = ({ sender }) => {
-      setTypingUsers((prev) => {
-        if (!prev.includes(sender)) return [...prev, sender];
-        return prev;
-      });
-      // Remove after 3 seconds
+      setTypingUsers((prev) => (!prev.includes(sender) ? [...prev, sender] : prev));
       setTimeout(() => {
         setTypingUsers((prev) => prev.filter((id) => id !== sender));
       }, 3000);
     };
-
     const handleSeen = ({ messageIds }) => {
       setMessages((prev) =>
-        prev.map((msg) =>
-          messageIds.includes(msg._id) ? { ...msg, isSeen: true } : msg
-        )
+        prev.map((msg) => (messageIds.includes(msg._id) ? { ...msg, isSeen: true } : msg))
       );
     };
 
@@ -97,45 +94,7 @@ const Messages = () => {
     return () => clearTimeout(timeout);
   }, [input, socket, currentUserId, otherId]);
 
-  // Send message (text or image)
-  const sendMessage = async () => {
-    if (!socket) return;
-    let messagePayload = {};
-    if (imageFile) {
-      // upload image first
-      const form = new FormData();
-      form.append('image', imageFile);
-      try {
-        const uploadRes = await axios.post('/api/chat/upload-image', form, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        messagePayload = {
-          sender: currentUserId,
-          recipient: otherId,
-          messageType: 'image',
-          message: uploadRes.data.imageUrl,
-        };
-      } catch (err) {
-        console.error('Image upload failed', err);
-        return;
-      }
-    } else if (input.trim()) {
-      messagePayload = {
-        sender: currentUserId,
-        recipient: otherId,
-        messageType: 'text',
-        message: input.trim(),
-      };
-    } else {
-      return;
-    }
-    socket.emit('chatMessage', messagePayload);
-    setInput('');
-    setImageFile(null);
-    setShowEmoji(false);
-  };
-
-  // Mark unseen messages as seen when component loads
+  // Mark unseen messages as seen when they appear
   useEffect(() => {
     if (!socket || !messages.length) return;
     const unseen = messages
@@ -146,7 +105,57 @@ const Messages = () => {
     }
   }, [socket, messages, currentUserId]);
 
-  // Render each message bubble
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // ----- Render loading state if socket not ready -----
+  if (!socket) {
+    return <div className="chat-loading">Connecting to chat…</div>;
+  }
+
+  // ----- Handlers -----
+  const sendMessage = async () => {
+    if (!socket) return;
+    let payload = {};
+    if (imageFile) {
+      const form = new FormData();
+      form.append('image', imageFile);
+      try {
+        const uploadRes = await axios.post(`${import.meta.env.VITE_API_URL}/api/chat/upload-image`, form, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        payload = {
+          sender: currentUserId,
+          recipient: otherId,
+          messageType: 'image',
+          message: uploadRes.data.imageUrl,
+        };
+      } catch (err) {
+        console.error('Image upload failed', err);
+        return;
+      }
+    } else if (input.trim()) {
+      payload = {
+        sender: currentUserId,
+        recipient: otherId,
+        messageType: 'text',
+        message: input.trim(),
+      };
+    } else {
+      return;
+    }
+    socket.emit('chatMessage', payload);
+    setInput('');
+    setImageFile(null);
+    setShowEmoji(false);
+  };
+
+  const onEmojiClick = (e, emojiObject) => {
+    setInput((prev) => prev + emojiObject.emoji);
+  };
+
   const renderMessage = (msg) => {
     const isMe = msg.sender === currentUserId;
     const containerClass = isMe ? 'msg-bubble me' : 'msg-bubble other';
@@ -165,7 +174,7 @@ const Messages = () => {
   return (
     <div className="chat-page">
       <div className="chat-header">
-        <h2>Chat</h2>
+        <h2>Chat with {otherId}</h2>
       </div>
       <div className="chat-body">
         {messages.map(renderMessage)}
@@ -177,7 +186,7 @@ const Messages = () => {
       <div className="chat-footer">
         {showEmoji && (
           <div className="emoji-picker-wrapper">
-            <EmojiPicker onEmojiClick={(e, emoji) => setInput((prev) => prev + emoji.emoji)} />
+            <EmojiPicker onEmojiClick={onEmojiClick} />
           </div>
         )}
         <input
