@@ -4,6 +4,13 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import toast from "react-hot-toast";
 
+const API_URL = import.meta.env.VITE_API_URL || "";
+
+const getAssetUrl = (path) => {
+  if (!path) return "";
+  return path.startsWith("http") ? path : `${API_URL}${path}`;
+};
+
 const ManageProjects = () => {
   const [projects, setProjects] = useState([]);
   const [formData, setFormData] = useState({
@@ -20,10 +27,14 @@ const ManageProjects = () => {
 
   const fetchProjects = async () => {
     try {
-      const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/projects`);
+      const token = localStorage.getItem("token");
+      const res = await axios.get(`${API_URL}/api/projects/my`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setProjects(res.data);
     } catch (err) {
       console.error(err);
+      toast.error(err.response?.data?.message || "Failed to load your projects");
     }
   };
 
@@ -45,20 +56,25 @@ const ManageProjects = () => {
     if (image) data.append("image", image);
 
     const token = localStorage.getItem("token");
+    if (!token) {
+      toast.error("Please login again before creating a project.");
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       if (editId) {
-        await axios.put(`${import.meta.env.VITE_API_URL}/api/projects/${editId}`, data, {
+        await axios.put(`${API_URL}/api/projects/${editId}`, data, {
           headers: {
-            Authorization: token,
+            Authorization: `Bearer ${token}`,
             "Content-Type": "multipart/form-data",
           },
         });
         toast.success("Project updated!");
       } else {
-        await axios.post(`${import.meta.env.VITE_API_URL}/api/projects`, data, {
+        await axios.post(`${API_URL}/api/projects`, data, {
           headers: {
-            Authorization: token,
+            Authorization: `Bearer ${token}`,
             "Content-Type": "multipart/form-data",
           },
         });
@@ -67,7 +83,8 @@ const ManageProjects = () => {
       resetForm();
       fetchProjects();
     } catch (err) {
-      toast.error("Operation failed");
+      console.error("Project operation failed:", err);
+      toast.error(err.response?.data?.message || "Operation failed");
     } finally {
       setIsSubmitting(false);
     }
@@ -85,7 +102,7 @@ const ManageProjects = () => {
       title: project.title,
       description: project.description,
       type: project.type,
-      tech: project.tech.join(","),
+      tech: (project.tech || []).join(","),
       liveLink: project.liveLink || "",
       githubLink: project.githubLink || "",
     });
@@ -97,13 +114,14 @@ const ManageProjects = () => {
     if (!window.confirm("Delete this project?")) return;
 
     try {
-      await axios.delete(`${import.meta.env.VITE_API_URL}/api/projects/${id}`, {
-        headers: { Authorization: token },
+      await axios.delete(`${API_URL}/api/projects/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
       toast.success("Project deleted");
       fetchProjects();
     } catch (err) {
-      toast.error("Delete failed");
+      console.error("Project delete failed:", err);
+      toast.error(err.response?.data?.message || "Delete failed");
     }
   };
 
@@ -200,13 +218,13 @@ const ManageProjects = () => {
                  {projects.map((project) => (
                    <div key={project._id} className="glass p-6 rounded-3xl border-white/5 flex items-center gap-6 group hover:border-primary-500/20 transition-all">
                      <div className="w-24 h-24 rounded-2xl bg-white/5 overflow-hidden shrink-0">
-                       {project.image && <img src={`${import.meta.env.VITE_API_URL}${project.image}`} alt="" className="w-full h-full object-cover" />}
+                       {project.image && <img src={getAssetUrl(project.image)} alt="" className="w-full h-full object-cover" />}
                      </div>
                      <div className="flex-1 min-w-0">
                        <h3 className="font-bold text-lg truncate">{project.title}</h3>
                        <p className="text-slate-400 text-sm line-clamp-1">{project.description}</p>
                        <div className="flex gap-2 mt-3">
-                         {project.tech.slice(0, 3).map(t => (
+                         {(project.tech || []).slice(0, 3).map(t => (
                            <span key={t} className="text-[10px] bg-white/5 px-2 py-1 rounded-md text-slate-500 uppercase">{t}</span>
                          ))}
                        </div>
