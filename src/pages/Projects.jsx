@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import { ProjectSkeleton } from "../components/Skeleton";
@@ -27,7 +28,7 @@ const Projects = () => {
 
     const token = localStorage.getItem("token");
     try {
-      const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/projects/${projectId}/access`, {
+      const res = await axios.get(`${API_URL}/api/projects/${projectId}/access`, {
         headers: { Authorization: token }
       });
       if (res.data.liveLink) {
@@ -42,7 +43,7 @@ const Projects = () => {
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/projects`);
+        const res = await axios.get(`${API_URL}/api/projects`);
         setProjects(res.data);
       } catch (err) {
         console.error(err);
@@ -68,11 +69,31 @@ const Projects = () => {
             <p className="text-slate-400 text-xl max-w-2xl mx-auto">
               Explore my latest projects, ranging from complex web systems to creative interactive experiences.
             </p>
+            {user && (
+              <Link
+                to="/manage-projects"
+                className="inline-flex mt-8 items-center justify-center rounded-xl bg-primary-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-primary-500/20 transition-all hover:bg-primary-600 active:scale-95"
+              >
+                Manage Projects
+              </Link>
+            )}
           </motion.div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {loading ? (
               [1, 2, 3, 4, 5, 6].map(i => <ProjectSkeleton key={i} />)
+            ) : projects.length === 0 ? (
+              <div className="col-span-full rounded-[2rem] border border-dashed border-white/10 bg-white/5 px-6 py-16 text-center">
+                <p className="text-slate-400 text-lg">No projects added yet.</p>
+                {user && (
+                  <Link
+                    to="/manage-projects"
+                    className="inline-flex mt-6 items-center justify-center rounded-xl bg-primary-500 px-6 py-3 text-sm font-bold text-white transition-all hover:bg-primary-600 active:scale-95"
+                  >
+                    Add Project
+                  </Link>
+                )}
+              </div>
             ) : (
               projects.map((project, index) => (
                 <motion.div 

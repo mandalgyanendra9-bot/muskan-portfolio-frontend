@@ -56,6 +56,9 @@ const Navbar = () => {
               <Link to="/dashboard" className="text-sm font-bold text-slate-300 hover:text-primary-400 transition-colors hidden sm:block">
                 Dashboard
               </Link>
+              <Link to="/manage-projects" className="text-sm font-bold text-slate-300 hover:text-primary-400 transition-colors hidden lg:block">
+                Manage Projects
+              </Link>
               {/* Billing Link (Desktop) */}
               <Link to="/billing" className="text-sm font-bold text-slate-300 hover:text-primary-400 transition-colors hidden sm:block">
                 Billing
@@ -133,6 +136,9 @@ const Navbar = () => {
               <>
                 <Link to="/dashboard" onClick={() => setMenuOpen(false)} className="text-base font-bold text-primary-400 py-2 border-b border-white/5">
                   Dashboard
+                </Link>
+                <Link to="/manage-projects" onClick={() => setMenuOpen(false)} className="text-base font-bold text-slate-300 hover:text-primary-400 py-2 border-b border-white/5 transition-colors">
+                  Manage Projects
                 </Link>
                 <Link to="/billing" onClick={() => setMenuOpen(false)} className="text-base font-bold text-slate-300 hover:text-primary-400 py-2 border-b border-white/5 transition-colors">
                   Billing
