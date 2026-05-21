@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
@@ -24,6 +24,7 @@ const ManageProjects = () => {
   const [image, setImage] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editId, setEditId] = useState(null);
+  const fileInputRef = useRef(null);
 
   const fetchProjects = async () => {
     try {
@@ -93,6 +94,7 @@ const ManageProjects = () => {
   const resetForm = () => {
     setFormData({ title: "", description: "", type: "Web App", tech: "", liveLink: "", githubLink: "" });
     setImage(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     setEditId(null);
   };
 
@@ -184,11 +186,25 @@ const ManageProjects = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs text-slate-500 ml-1">Project Thumbnail</label>
-                    <input 
-                      type="file" 
-                      className="w-full text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary-500/10 file:text-primary-400 hover:file:bg-primary-500/20 cursor-pointer"
-                      onChange={(e) => setImage(e.target.files[0])}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => setImage(e.target.files?.[0] || null)}
                     />
+                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="shrink-0 rounded-full bg-primary-500/10 px-4 py-2 text-sm font-semibold text-primary-400 transition-all hover:bg-primary-500/20"
+                      >
+                        Choose File
+                      </button>
+                      <span className="min-w-0 truncate text-sm text-slate-400">
+                        {image?.name || "No file chosen"}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex gap-4">
                     <button 
