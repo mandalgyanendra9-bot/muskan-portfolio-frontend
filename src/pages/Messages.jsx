@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import { useChat } from '../context/ChatContext';
+import { ChatProvider, useChat } from '../context/ChatContext';
 import EmojiPicker from 'emoji-picker-react';
 import './Messages.css';
 
-const Messages = () => {
+const MessagesContent = () => {
   // ----- Params & Context -----
   const { otherId } = useParams(); // ID of the user we are chatting with
   const { socket } = useChat();
@@ -16,7 +16,7 @@ const Messages = () => {
   const [showEmoji, setShowEmoji] = useState(false);
   const [imageFile, setImageFile] = useState(null);
   const [typingUsers, setTypingUsers] = useState([]);
-  const [currentUserId, setCurrentUserId] = useState(null);
+  const [currentUserId] = useState(() => localStorage.getItem('userId'));
 
   // ----- Refs -----
   const messagesEndRef = useRef(null);
@@ -25,13 +25,6 @@ const Messages = () => {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-
-  // ----- Effects (must be declared before any conditional return) -----
-  // Load current user ID (example: from localStorage)
-  useEffect(() => {
-    const stored = localStorage.getItem('userId');
-    if (stored) setCurrentUserId(stored);
-  }, []);
 
   // Join private room when socket & user ID are ready
   useEffect(() => {
@@ -118,7 +111,7 @@ const Messages = () => {
   // ----- Handlers -----
   const sendMessage = async () => {
     if (!socket || !currentUserId || !otherId) return;
-    let payload = {};
+    let payload;
     if (imageFile) {
       const form = new FormData();
       form.append('image', imageFile);
@@ -154,7 +147,7 @@ const Messages = () => {
     if (fileInput) fileInput.value = '';
   };
 
-  const onEmojiClick = (emojiObject, e) => {
+  const onEmojiClick = (emojiObject) => {
     if (emojiObject?.emoji) {
       setInput((prev) => prev + emojiObject.emoji);
     }
@@ -219,5 +212,11 @@ const Messages = () => {
     </div>
   );
 };
+
+const Messages = () => (
+  <ChatProvider>
+    <MessagesContent />
+  </ChatProvider>
+);
 
 export default Messages;

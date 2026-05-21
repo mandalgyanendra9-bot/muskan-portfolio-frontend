@@ -9,6 +9,13 @@ import SEO from "../components/SEO";
 import toast from "react-hot-toast";
 import BookingModal from "../components/BookingModal";
 
+const API_URL = import.meta.env.VITE_API_URL || "";
+
+const getAssetUrl = (path, fallback) => {
+  if (!path) return fallback;
+  return path.startsWith("http") ? path : `${API_URL}${path}`;
+};
+
 const Experts = () => {
   const [experts, setExperts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +33,7 @@ const Experts = () => {
   useEffect(() => {
     const fetchExperts = async () => {
       try {
-        const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/profiles/experts`);
+        const res = await axios.get(`${API_URL}/api/profiles/experts`);
         setExperts(res.data);
       } catch (err) {
         console.error("Error fetching experts:", err);
@@ -52,12 +59,15 @@ const Experts = () => {
 
   // Filtering Logic
   const filteredExperts = experts.filter(expert => {
+    const name = expert.name || "";
+    const title = expert.title || "";
+    const skills = expert.skills || [];
     const matchesSearch = 
-      expert.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      expert.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      expert.skills?.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()));
+      name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      skills.some(s => s.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    const matchesSkill = selectedSkill === "all" || expert.skills?.includes(selectedSkill);
+    const matchesSkill = selectedSkill === "all" || skills.includes(selectedSkill);
     const matchesRating = (expert.rating || 5) >= minRating;
     const matchesAvailability = !onlyAvailable || expert.isAvailable;
 
@@ -187,14 +197,14 @@ const Experts = () => {
 
                   <div className="w-28 h-28 rounded-full border-4 border-primary-500/10 group-hover:border-primary-500 transition-all p-1 mb-6 mt-4">
                     <img 
-                      src={expert.profileImage ? `${import.meta.env.VITE_API_URL}${expert.profileImage}` : "https://via.placeholder.com/150"} 
-                      alt={expert.name} 
+                      src={getAssetUrl(expert.profileImage, "https://via.placeholder.com/150")} 
+                      alt={expert.name || "Expert"} 
                       className="w-full h-full object-cover rounded-full"
                     />
                   </div>
                   
-                  <h3 className="text-2xl font-bold text-text-main mb-1 group-hover:text-primary-400 transition-colors">{expert.name}</h3>
-                  <p className="text-slate-400 text-sm font-medium mb-4">{expert.title}</p>
+                  <h3 className="text-2xl font-bold text-text-main mb-1 group-hover:text-primary-400 transition-colors">{expert.name || "Expert"}</h3>
+                  <p className="text-slate-400 text-sm font-medium mb-4">{expert.title || "Professional"}</p>
                   
                   <p className="text-text-muted text-sm line-clamp-2 mb-6 max-w-xs">
                     {expert.bio || "No bio provided."}

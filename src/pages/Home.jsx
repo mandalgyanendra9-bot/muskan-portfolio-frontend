@@ -7,6 +7,13 @@ import { Link, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 
+const API_URL = import.meta.env.VITE_API_URL || "";
+
+const getAssetUrl = (path, fallback) => {
+  if (!path) return fallback;
+  return path.startsWith("http") ? path : `${API_URL}${path}`;
+};
+
 const Home = () => {
   const [projects, setProjects] = useState([]);
   const [experts, setExperts] = useState([]);
@@ -24,7 +31,7 @@ const Home = () => {
 
     const token = localStorage.getItem("token");
     try {
-      const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/projects/${projectId}/access`, {
+      const res = await axios.get(`${API_URL}/api/projects/${projectId}/access`, {
         headers: { Authorization: token }
       });
       if (res.data.liveLink) {
@@ -40,8 +47,8 @@ const Home = () => {
     const fetchLandingData = async () => {
       try {
         const [projectsRes, expertsRes] = await Promise.all([
-          axios.get(`${import.meta.env.VITE_API_URL}/api/projects`),
-          axios.get(`${import.meta.env.VITE_API_URL}/api/profiles/experts`)
+          axios.get(`${API_URL}/api/projects`),
+          axios.get(`${API_URL}/api/profiles/experts`)
         ]);
         
         setProjects(projectsRes.data.slice(0, 3)); // Top 3 projects
@@ -131,14 +138,14 @@ const Home = () => {
                   
                   <div className="w-24 h-24 rounded-full border-2 border-primary-500/15 mb-4 p-1">
                     <img 
-                      src={expert.profileImage ? `${import.meta.env.VITE_API_URL}${expert.profileImage}` : "https://via.placeholder.com/150"} 
-                      alt={expert.name} 
+                      src={getAssetUrl(expert.profileImage, "https://via.placeholder.com/150")} 
+                      alt={expert.name || "Expert"} 
                       className="w-full h-full object-cover rounded-full"
                     />
                   </div>
                   
-                  <h3 className="text-xl font-bold text-white mb-1 group-hover:text-primary-400 transition-colors">{expert.name}</h3>
-                  <p className="text-slate-400 text-xs font-medium mb-4">{expert.title}</p>
+                  <h3 className="text-xl font-bold text-white mb-1 group-hover:text-primary-400 transition-colors">{expert.name || "Expert"}</h3>
+                  <p className="text-slate-400 text-xs font-medium mb-4">{expert.title || "Professional"}</p>
                   
                   <p className="text-text-muted text-xs line-clamp-2 mb-6">
                     {expert.bio || "No bio provided."}
@@ -182,17 +189,17 @@ const Home = () => {
               >
                 <div className="h-48 overflow-hidden relative">
                   <img 
-                    src={project.image ? `${import.meta.env.VITE_API_URL}${project.image}` : "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800&q=80"} 
-                    alt={project.title}
+                    src={getAssetUrl(project.image, "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800&q=80")} 
+                    alt={project.title || "Project"}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-surface to-transparent opacity-60"></div>
                 </div>
                 <div className="p-8">
-                  <h3 className="text-2xl font-bold mb-2 text-white">{project.title}</h3>
-                  <p className="text-slate-400 text-sm mb-6 line-clamp-2 leading-relaxed">{project.description}</p>
+                  <h3 className="text-2xl font-bold mb-2 text-white">{project.title || "Untitled Project"}</h3>
+                  <p className="text-slate-400 text-sm mb-6 line-clamp-2 leading-relaxed">{project.description || "Project details will be added soon."}</p>
                   <div className="flex flex-wrap gap-2 mb-6">
-                    {project.technologies?.slice(0, 3).map(tech => (
+                    {(project.tech || project.technologies || []).slice(0, 3).map(tech => (
                       <span key={tech} className="bg-white/5 border border-white/5 px-3 py-1 rounded-full text-[10px] font-bold text-slate-400">
                         {tech}
                       </span>

@@ -7,6 +7,13 @@ import { ProjectSkeleton } from "../components/Skeleton";
 import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 
+const API_URL = import.meta.env.VITE_API_URL || "";
+
+const getAssetUrl = (path, fallback) => {
+  if (!path) return fallback;
+  return path.startsWith("http") ? path : `${API_URL}${path}`;
+};
+
 const Projects = () => {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -69,7 +76,7 @@ const Projects = () => {
             ) : (
               projects.map((project, index) => (
                 <motion.div 
-                  key={project._id}
+                  key={project._id || project.title}
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
@@ -78,22 +85,26 @@ const Projects = () => {
                   className="glass rounded-[2.5rem] overflow-hidden border-white/5 flex flex-col group h-full"
                 >
                   <div className="aspect-video relative overflow-hidden">
-                    <img src={`${import.meta.env.VITE_API_URL}${project.image}`} alt={project.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                    <img
+                      src={getAssetUrl(project.image, "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800&q=80")}
+                      alt={project.title || "Project"}
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                    />
                     <div className="absolute top-4 left-4">
                       <span className="bg-surface/80 backdrop-blur-md text-primary-400 text-[10px] font-bold px-3 py-1 rounded-full border border-white/5 uppercase tracking-wider">
-                        {project.type}
+                        {project.type || "Web App"}
                       </span>
                     </div>
                   </div>
                   
                   <div className="p-8 flex-1 flex flex-col">
-                    <h3 className="text-2xl font-bold mb-3 group-hover:text-primary-400 transition-colors">{project.title}</h3>
+                    <h3 className="text-2xl font-bold mb-3 group-hover:text-primary-400 transition-colors">{project.title || "Untitled Project"}</h3>
                     <p className="text-slate-400 text-sm mb-6 flex-1 line-clamp-3 leading-relaxed">
-                      {project.description}
+                      {project.description || "Project details will be added soon."}
                     </p>
                     
                     <div className="flex flex-wrap gap-2 mb-8">
-                      {project.tech.map((tech) => (
+                      {(project.tech || project.technologies || []).map((tech) => (
                         <span key={tech} className="text-[10px] bg-white/5 px-3 py-1 rounded-full text-slate-500 uppercase font-medium">
                           {tech}
                         </span>
