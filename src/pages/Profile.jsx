@@ -34,6 +34,7 @@ const Profile = () => {
   const skillInputRef = useRef();
   const [activeTab, setActiveTab] = useState("profile");
   const [saving, setSaving] = useState(false);
+  const [aiGeneratingBio, setAiGeneratingBio] = useState(false);
   const [reviews, setReviews] = useState([]);
   const [loadingReviews, setLoadingReviews] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -156,6 +157,27 @@ const Profile = () => {
     } catch (err) {
       toast.error(err.response?.data?.message || "Save failed");
     } finally { setSaving(false); }
+  };
+
+  const handleGenerateBio = async () => {
+    setAiGeneratingBio(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await API.post("/ai/bio", {
+        name: form.name,
+        title: form.title,
+        category: form.category,
+        skills: form.skills,
+        experience: form.experience,
+        tone: "professional",
+      }, { headers: { Authorization: token } });
+      setForm(f => ({ ...f, bio: res.data.bio.slice(0, 500) }));
+      toast.success("AI bio generated. Review and save it.");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "AI bio generation failed");
+    } finally {
+      setAiGeneratingBio(false);
+    }
   };
 
   const avatarSrc = imagePreview || (user?.profileImage ? (user.profileImage.startsWith("http") ? user.profileImage : `${import.meta.env.VITE_API_URL}${user.profileImage}`) : null);
@@ -316,7 +338,17 @@ const Profile = () => {
               <div className="space-y-1.5">
                 <div className="flex justify-between ml-1">
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Bio / About Me</label>
-                  <span className="text-xs text-slate-600">{form.bio.length}/500</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleGenerateBio}
+                      disabled={aiGeneratingBio}
+                      className="text-xs text-primary-300 hover:text-primary-200 font-bold disabled:opacity-50"
+                    >
+                      {aiGeneratingBio ? "Generating..." : "Generate Bio"}
+                    </button>
+                    <span className="text-xs text-slate-600">{form.bio.length}/500</span>
+                  </div>
                 </div>
                 <textarea
                   rows={4} maxLength={500}

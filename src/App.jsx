@@ -26,6 +26,7 @@ const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Billing = lazy(() => import("./pages/Billing"));
 const Live = lazy(() => import("./pages/Live"));
+const AIFeatures = lazy(() => import("./pages/AIFeatures"));
 
 const PageLoader = () => (
   <div className="min-h-screen bg-surface flex items-center justify-center text-primary-400">
@@ -48,6 +49,7 @@ function App() {
             <Route path="/experts" element={<Experts />} />
             <Route path="/expert" element={<Experts />} />
             <Route path="/live" element={<Live />} />
+            <Route path="/ai" element={<AIFeatures />} />
             <Route path="/contact" element={<Contact />} />
 
             {/* Auth */}

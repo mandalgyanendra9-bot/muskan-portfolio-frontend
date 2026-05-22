@@ -41,6 +41,13 @@ const liveFeatures = [
   "Live Viewer Count",
 ];
 
+const aiFeatures = [
+  "AI Recommendation System",
+  "AI Chat Assistant",
+  "Smart Matching",
+  "AI-generated Bios",
+];
+
 const Home = () => {
   const [projects, setProjects] = useState([]);
   const [experts, setExperts] = useState([]);
@@ -153,6 +160,33 @@ const Home = () => {
               <div key={feature.title} className="glass rounded-[2rem] p-6 border-white/5">
                 <h3 className="text-xl font-bold text-white">{feature.title}</h3>
                 <p className="text-slate-400 text-sm leading-relaxed mt-3">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* AI Features Section */}
+      <div className="py-20 bg-surface-variant/10 border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-10">
+            <div>
+              <span className="inline-flex px-3 py-1 rounded-full border border-primary-500/30 bg-primary-500/10 text-primary-300 text-xs font-extrabold uppercase tracking-wider">
+                AI Features
+              </span>
+              <h2 className="text-4xl font-extrabold text-white mt-4">Smarter discovery, matching, chat, and bios</h2>
+              <p className="text-slate-400 text-lg mt-2 max-w-2xl">
+                Help users find the right experts faster and help experts write stronger profiles.
+              </p>
+            </div>
+            <Link to="/ai" className="w-full sm:w-auto text-center px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-extrabold rounded-2xl transition-all active:scale-95">
+              Open AI Tools
+            </Link>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {aiFeatures.map((feature) => (
+              <div key={feature} className="glass rounded-[2rem] p-5 border-white/5">
+                <h3 className="text-white font-bold">{feature}</h3>
               </div>
             ))}
           </div>
