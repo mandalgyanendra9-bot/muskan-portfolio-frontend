@@ -10,7 +10,26 @@ import "jspdf-autotable";
 const PLANS = [
   { id: "free", name: "Free", price: 0, benefits: ["Basic Profile", "Standard Support"] },
   { id: "pro", name: "Pro Plan", price: 999, benefits: ["Featured Listing", "Priority Support", "0% Commission"] },
-  { id: "premium", name: "Premium", price: 1999, benefits: ["Top Placement", "24/7 Dedicated Support", "0% Commission", "Analytics Dashboard"] },
+  { id: "premium", name: "Premium VIP", price: 1999, benefits: ["VIP Membership Badge", "Priority Booking Queue", "Exclusive Content Access", "Followers & Subscribers Growth Tools"] },
+];
+
+const PREMIUM_FEATURES = [
+  {
+    title: "VIP Membership",
+    description: "Show a premium badge across your profile and billing area.",
+  },
+  {
+    title: "Priority Booking",
+    description: "Premium client bookings are moved to the top of the expert queue.",
+  },
+  {
+    title: "Exclusive Content",
+    description: "Publish locked profile updates that only subscribers can read.",
+  },
+  {
+    title: "Followers / Subscribers",
+    description: "Track real audience growth from follows and content subscriptions.",
+  },
 ];
 
 const Billing = () => {
@@ -21,6 +40,9 @@ const Billing = () => {
   const [processing, setProcessing] = useState(false);
   const [withdrawBank, setWithdrawBank] = useState({ accountNumber: "", ifsc: "", bankName: "" });
   const [showWithdraw, setShowWithdraw] = useState(false);
+  const followersCount = user?.followers?.length || 0;
+  const subscribersCount = user?.subscribers?.length || 0;
+  const isPremium = user?.subscriptionPlan === "premium";
 
   useEffect(() => {
     fetchHistory();
@@ -273,6 +295,49 @@ const Billing = () => {
               <p className="text-xs text-slate-400 mt-4 text-center">Your plan expires on: {new Date(user.subscriptionExpiresAt).toLocaleDateString()}</p>
             )}
           </div>
+        </div>
+
+        <div className="glass p-8 rounded-[2rem] border-white/5 overflow-hidden relative">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-8">
+            <div className="max-w-2xl">
+              <span className="inline-flex px-3 py-1 rounded-full border border-amber-400/30 bg-amber-400/10 text-amber-300 text-xs font-extrabold uppercase tracking-wider">
+                Premium Features
+              </span>
+              <h2 className="text-3xl font-extrabold text-white mt-4">VIP tools for bookings, content, and audience growth</h2>
+              <p className="text-slate-400 mt-3 text-sm leading-relaxed">
+                Build a real follower and subscriber base through profile follows, exclusive content, and premium booking visibility.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 w-full lg:w-72">
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Followers</p>
+                <p className="text-3xl font-extrabold text-white mt-1">{followersCount}</p>
+              </div>
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Subscribers</p>
+                <p className="text-3xl font-extrabold text-primary-400 mt-1">{subscribersCount}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-4 gap-4 mt-8">
+            {PREMIUM_FEATURES.map((feature) => (
+              <div key={feature.title} className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                <h3 className="text-white font-bold">{feature.title}</h3>
+                <p className="text-slate-400 text-xs leading-relaxed mt-2">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+
+          {!isPremium && (
+            <button
+              onClick={() => handleRazorpayPayment(1999, "subscription", "Premium VIP Subscription")}
+              disabled={processing}
+              className="mt-8 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold py-3 px-6 rounded-2xl transition-all active:scale-95 disabled:opacity-50"
+            >
+              Upgrade to VIP Premium
+            </button>
+          )}
         </div>
 
         {/* Payment History */}

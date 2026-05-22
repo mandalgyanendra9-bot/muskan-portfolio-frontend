@@ -40,6 +40,7 @@ const Dashboard = () => {
     github: user?.github || "",
     linkedin: user?.linkedin || "",
     portfolio: user?.portfolio || "",
+    exclusiveContent: user?.exclusiveContent || "",
     isAvailable: user?.isAvailable !== false,
   });
 
@@ -205,6 +206,9 @@ const Dashboard = () => {
 
   const pendingCount = bookings.filter(b => b.status === "pending").length;
   const confirmedCount = bookings.filter(b => b.status === "confirmed").length;
+  const priorityCount = bookings.filter(b => b.isPriority).length;
+  const followersCount = user?.followers?.length || 0;
+  const subscribersCount = user?.subscribers?.length || 0;
 
   // Filtered Bookings for tabs
   const filteredBookings = bookings.filter(b => {
@@ -378,6 +382,11 @@ const Dashboard = () => {
                   <h1 className="text-3xl font-extrabold text-white">Hello, {user.name}</h1>
                   <p className="text-primary-400 font-medium text-lg mt-1 capitalize">Role: {user.role}</p>
                   <p className="text-slate-400 text-sm mt-1">{user.title}</p>
+                  {user.subscriptionPlan === "premium" && (
+                    <span className="inline-flex mt-3 bg-amber-400/10 border border-amber-400/30 text-amber-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                      VIP premium member
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -407,7 +416,7 @@ const Dashboard = () => {
             {user.role === "expert" ? (
               <div className="space-y-12">
                 {/* Stats row */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                   <div className="glass p-8 rounded-[2rem] border-white/5 flex flex-col justify-between h-40 shadow-xl">
                     <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Total Earnings</span>
                     <h3 className="text-3xl font-extrabold text-white">₹{earningsSum}</h3>
@@ -429,7 +438,13 @@ const Dashboard = () => {
                   <div className="glass p-8 rounded-[2rem] border-white/5 flex flex-col justify-between h-40 shadow-xl border-l-primary-500/20">
                     <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Active Tasks</span>
                     <h3 className="text-3xl font-extrabold text-primary-400">{confirmedCount} confirmed</h3>
-                    <span className="text-xs text-slate-400 font-medium">{pendingCount} pending approvals</span>
+                    <span className="text-xs text-slate-400 font-medium">{pendingCount} pending, {priorityCount} VIP priority</span>
+                  </div>
+
+                  <div className="glass p-8 rounded-[2rem] border-white/5 flex flex-col justify-between h-40 shadow-xl border-l-amber-400/30">
+                    <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Audience</span>
+                    <h3 className="text-3xl font-extrabold text-white">{followersCount}</h3>
+                    <span className="text-xs text-primary-400 font-medium">{subscribersCount} subscribers</span>
                   </div>
                 </div>
 
@@ -494,6 +509,11 @@ const Dashboard = () => {
                                 <p className="text-xs text-primary-400 font-mono mt-1">
                                   📅 {new Date(b.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} ({b.duration}hr session)
                                 </p>
+                                {b.isPriority && (
+                                  <span className="inline-flex mt-2 bg-amber-400/10 border border-amber-400/30 text-amber-300 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider">
+                                    VIP priority booking
+                                  </span>
+                                )}
                                 {b.notes && (
                                   <p className="text-slate-500 text-xs italic mt-2 bg-white/5 px-4 py-2 rounded-xl border border-white/5">
                                     "{b.notes}"
@@ -608,6 +628,17 @@ const Dashboard = () => {
                         onChange={(e) => setProfileForm({ ...profileForm, bio: e.target.value })}
                       />
                     </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">Exclusive Content for Subscribers</label>
+                      <textarea
+                        rows="5"
+                        maxLength="1200"
+                        placeholder="Share a premium note, checklist, or resource for subscribers..."
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:border-primary-500 text-white transition-all text-sm"
+                        value={profileForm.exclusiveContent}
+                        onChange={(e) => setProfileForm({ ...profileForm, exclusiveContent: e.target.value })}
+                      />
+                    </div>
                     <div className="grid md:grid-cols-3 gap-6">
                       <div className="space-y-2">
                         <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">Github</label>
@@ -701,6 +732,11 @@ const Dashboard = () => {
                                   <p className="text-xs text-slate-400 font-mono mt-1">
                                     📅 {new Date(b.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} ({b.duration}hr session)
                                   </p>
+                                  {b.isPriority && (
+                                    <span className="inline-flex mt-2 bg-amber-400/10 border border-amber-400/30 text-amber-300 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider">
+                                      VIP priority booking
+                                    </span>
+                                  )}
                                   {b.notes && (
                                     <p className="text-slate-500 text-xs italic mt-2 bg-white/5 px-4 py-2 rounded-xl border border-white/5">
                                       "{b.notes}"

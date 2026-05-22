@@ -8,6 +8,8 @@ import SEO from "../components/SEO";
 import BookingModal from "../components/BookingModal";
 import toast from "react-hot-toast";
 
+const getAudienceId = (item) => (typeof item === "string" ? item : item?._id);
+
 const ExpertDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -72,7 +74,32 @@ const ExpertDetail = () => {
     }
   };
 
+  const handleToggleAudience = async (type) => {
+    if (!user) {
+      toast.error(`Please login to ${type} this expert.`);
+      navigate("/login");
+      return;
+    }
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/profiles/${type}/${id}`,
+        {},
+        { headers: { Authorization: token } }
+      );
+      setExpert(res.data.expert);
+      toast.success(res.data.message);
+    } catch (err) {
+      toast.error(err.response?.data?.message || `Failed to ${type} expert`);
+    }
+  };
+
   const isFavorited = user?.favorites?.some(fav => fav._id === id || fav === id);
+  const isFollowing = expert?.followers?.some(item => getAudienceId(item) === user?._id);
+  const isSubscribed = expert?.subscribers?.some(item => getAudienceId(item) === user?._id);
+  const followerCount = expert?.followers?.length || 0;
+  const subscriberCount = expert?.subscribers?.length || 0;
+  const canViewExclusiveContent = isSubscribed || user?._id === expert?._id || user?.subscriptionPlan === "premium";
 
   if (loading) {
     return (
@@ -143,9 +170,33 @@ const ExpertDetail = () => {
                       {expert.category}
                     </span>
                   )}
+                  {expert.subscriptionPlan === "premium" && (
+                    <span className="bg-amber-400/10 border border-amber-400/30 text-amber-300 px-3.5 py-1.5 rounded-full text-xs font-bold">
+                      VIP Member
+                    </span>
+                  )}
                 </div>
                 <p className="text-2xl text-primary-400 font-semibold mt-1">{expert.title}</p>
                 {expert.experience && <p className="text-sm text-slate-400 mt-0.5">Experience: {expert.experience}</p>}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-3xl">
+                <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3">
+                  <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Followers</p>
+                  <p className="text-2xl font-extrabold text-white mt-1">{followerCount}</p>
+                </div>
+                <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3">
+                  <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Subscribers</p>
+                  <p className="text-2xl font-extrabold text-primary-400 mt-1">{subscriberCount}</p>
+                </div>
+                <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3">
+                  <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Reviews</p>
+                  <p className="text-2xl font-extrabold text-yellow-400 mt-1">{expert.reviewsCount || 0}</p>
+                </div>
+                <div className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3">
+                  <p className="text-xs text-slate-500 font-bold uppercase tracking-wider">Content</p>
+                  <p className="text-2xl font-extrabold text-emerald-400 mt-1">{expert.exclusiveContent ? "1" : "0"}</p>
+                </div>
               </div>
 
               <div className="flex flex-wrap justify-center md:justify-start gap-2">
@@ -181,6 +232,29 @@ const ExpertDetail = () => {
                 </div>
               )}
 
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={() => handleToggleAudience("follow")}
+                  className={`px-6 py-3 rounded-2xl border font-bold text-sm transition-all active:scale-95 ${
+                    isFollowing
+                      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                      : "bg-white/5 border-white/10 text-slate-300 hover:text-white hover:border-primary-500/30"
+                  }`}
+                >
+                  {isFollowing ? "Following" : "Follow"}
+                </button>
+                <button
+                  onClick={() => handleToggleAudience("subscribe")}
+                  className={`px-6 py-3 rounded-2xl border font-bold text-sm transition-all active:scale-95 ${
+                    isSubscribed
+                      ? "bg-primary-500/15 border-primary-500/40 text-primary-300"
+                      : "bg-amber-400/10 border-amber-400/30 text-amber-300 hover:bg-amber-400/20"
+                  }`}
+                >
+                  {isSubscribed ? "Subscribed" : "Subscribe for Exclusive Content"}
+                </button>
+              </div>
+
               <div className="flex flex-col sm:flex-row items-center gap-6 justify-center md:justify-start border-t border-white/5 pt-6 mt-6">
                 <div>
                   <p className="text-xs text-slate-500 uppercase tracking-widest font-bold">Hourly rate</p>
@@ -203,6 +277,36 @@ const ExpertDetail = () => {
             </div>
           </div>
         </div>
+
+        {expert.exclusiveContent && (
+          <div className="mb-16 glass rounded-[2rem] p-8 border-white/5">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
+              <div>
+                <span className="inline-flex px-3 py-1 rounded-full border border-amber-400/30 bg-amber-400/10 text-amber-300 text-xs font-extrabold uppercase tracking-wider">
+                  Exclusive Content
+                </span>
+                <h2 className="text-3xl font-bold text-white mt-3">Subscriber-only update</h2>
+              </div>
+              {!canViewExclusiveContent && (
+                <button
+                  onClick={() => handleToggleAudience("subscribe")}
+                  className="px-6 py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-2xl transition-all active:scale-95"
+                >
+                  Subscribe to Unlock
+                </button>
+              )}
+            </div>
+            {canViewExclusiveContent ? (
+              <p className="text-slate-300 leading-relaxed whitespace-pre-line">{expert.exclusiveContent}</p>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6">
+                <p className="text-slate-400 text-sm">
+                  This creator has premium content available for subscribers. Follow and subscribe to unlock the full post.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Intro Video */}
         {expert.introVideo && (

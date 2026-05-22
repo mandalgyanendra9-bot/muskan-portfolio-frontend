@@ -2,10 +2,13 @@ import { useState } from "react";
 import PaymentButton from "./PaymentButton";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
+import { useAuth } from "../context/AuthContext";
 
 const BookingModal = ({ expert, onClose }) => {
+  const { user } = useAuth();
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
+  const isPriorityBooking = user?.subscriptionPlan === "premium";
   const [bookingData, setBookingData] = useState({
     expert: expert._id,
     date: "",
@@ -79,6 +82,12 @@ const BookingModal = ({ expert, onClose }) => {
           
           <h2 className="text-3xl font-extrabold mb-1">Book <span className="text-primary-400">{expert.name}</span></h2>
           <p className="text-text-muted text-sm mb-6 italic">Select a slot to confirm your consultation session.</p>
+          {isPriorityBooking && (
+            <div className="mb-6 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-5 py-3">
+              <p className="text-xs font-extrabold uppercase tracking-wider text-amber-300">VIP Priority Booking</p>
+              <p className="text-sm text-slate-300 mt-1">Your request will appear first in the expert's booking queue.</p>
+            </div>
+          )}
 
           <div className="space-y-6 mb-8">
             {/* Step 1: Select Date */}

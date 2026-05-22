@@ -14,6 +14,25 @@ const getAssetUrl = (path, fallback) => {
   return path.startsWith("http") ? path : `${API_URL}${path}`;
 };
 
+const premiumFeatures = [
+  {
+    title: "VIP Membership",
+    description: "Highlight premium members with stronger profile placement and trust signals.",
+  },
+  {
+    title: "Priority Booking",
+    description: "Let premium clients jump into a priority queue when they book consultations.",
+  },
+  {
+    title: "Exclusive Content",
+    description: "Experts can publish subscriber-only profile updates, notes, and resources.",
+  },
+  {
+    title: "Followers / Subscribers",
+    description: "Grow a real audience with follow and subscribe actions on expert profiles.",
+  },
+];
+
 const Home = () => {
   const [projects, setProjects] = useState([]);
   const [experts, setExperts] = useState([]);
@@ -103,6 +122,35 @@ const Home = () => {
         </div>
       </div>
 
+      {/* Premium Features Section */}
+      <div className="py-20 border-y border-white/5 bg-surface-variant/10">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-10">
+            <div>
+              <span className="inline-flex px-3 py-1 rounded-full border border-amber-400/30 bg-amber-400/10 text-amber-300 text-xs font-extrabold uppercase tracking-wider">
+                Premium Features
+              </span>
+              <h2 className="text-4xl font-extrabold text-white mt-4">VIP access for serious clients and creators</h2>
+              <p className="text-slate-400 text-lg mt-2 max-w-2xl">
+                Add membership value with priority bookings, exclusive content, and real follower/subscriber growth.
+              </p>
+            </div>
+            <Link to={user ? "/billing" : "/register"} className="w-full sm:w-auto text-center px-6 py-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-2xl transition-all active:scale-95">
+              {user ? "Open Premium" : "Start Membership"}
+            </Link>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+            {premiumFeatures.map((feature) => (
+              <div key={feature.title} className="glass rounded-[2rem] p-6 border-white/5">
+                <h3 className="text-xl font-bold text-white">{feature.title}</h3>
+                <p className="text-slate-400 text-sm leading-relaxed mt-3">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Featured Experts Section */}
       <div className="py-24 bg-surface-variant/20 border-y border-white/5">
         <div className="max-w-7xl mx-auto px-6">
@@ -146,6 +194,10 @@ const Home = () => {
                   
                   <h3 className="text-xl font-bold text-white mb-1 group-hover:text-primary-400 transition-colors">{expert.name || "Expert"}</h3>
                   <p className="text-slate-400 text-xs font-medium mb-4">{expert.title || "Professional"}</p>
+                  <div className="flex items-center gap-3 mb-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    <span>{expert.followers?.length || 0} followers</span>
+                    <span>{expert.subscribers?.length || 0} subscribers</span>
+                  </div>
                   
                   <p className="text-text-muted text-xs line-clamp-2 mb-6">
                     {expert.bio || "No bio provided."}

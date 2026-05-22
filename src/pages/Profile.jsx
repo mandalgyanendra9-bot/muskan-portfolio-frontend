@@ -59,6 +59,7 @@ const Profile = () => {
     linkedin: user?.linkedin || "",
     portfolio: user?.portfolio || "",
     introVideo: user?.introVideo || "",
+    exclusiveContent: user?.exclusiveContent || "",
     isAvailable: user?.isAvailable !== false,
     role: user?.role || "client",
   });
@@ -211,6 +212,21 @@ const Profile = () => {
                   <span className="text-slate-500 text-xs">({user?.reviewsCount || 0} reviews)</span>
                 </div>
               )}
+              {user?.role === "expert" && (
+                <div className="flex flex-wrap gap-2 mt-3 justify-center md:justify-start">
+                  <span className="bg-white/5 border border-white/10 text-slate-300 px-3 py-1 rounded-full text-xs font-bold">
+                    {user?.followers?.length || 0} followers
+                  </span>
+                  <span className="bg-primary-500/10 border border-primary-500/20 text-primary-300 px-3 py-1 rounded-full text-xs font-bold">
+                    {user?.subscribers?.length || 0} subscribers
+                  </span>
+                  {user?.subscriptionPlan === "premium" && (
+                    <span className="bg-amber-400/10 border border-amber-400/30 text-amber-300 px-3 py-1 rounded-full text-xs font-bold">
+                      VIP premium
+                    </span>
+                  )}
+                </div>
+              )}
               {/* Online/Offline Toggle */}
               {user?.role === "expert" && (
                 <button
@@ -329,6 +345,18 @@ const Profile = () => {
                     <input type="url" placeholder="https://youtube.com/watch?v=..." className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary-500 transition-all text-sm placeholder-slate-600" value={form.introVideo} onChange={e => setForm(f => ({ ...f, introVideo: e.target.value }))} />
                     <p className="text-xs text-slate-600 ml-1">Paste YouTube or Vimeo URL</p>
                   </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Exclusive Content for Subscribers</label>
+                  <textarea
+                    rows={5}
+                    maxLength={1200}
+                    placeholder="Share a premium note, resource, checklist, or private update for subscribers..."
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary-500 transition-all text-sm placeholder-slate-600 resize-none"
+                    value={form.exclusiveContent}
+                    onChange={e => setForm(f => ({ ...f, exclusiveContent: e.target.value }))}
+                  />
+                  <p className="text-xs text-slate-600 ml-1">{form.exclusiveContent.length}/1200 characters</p>
                 </div>
               </div>
             )}
