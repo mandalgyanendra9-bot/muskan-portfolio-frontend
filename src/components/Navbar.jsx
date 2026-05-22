@@ -31,6 +31,7 @@ const Navbar = () => {
           <Link to="/projects" className="text-sm font-medium hover:text-primary-400 transition-colors">Projects</Link>
           <Link to="/blog" className="text-sm font-medium hover:text-primary-400 transition-colors">Blog</Link>
           <Link to="/experts" className="text-sm font-medium hover:text-primary-400 transition-colors">Experts</Link>
+          <Link to="/live" className="text-sm font-medium hover:text-primary-400 transition-colors">Live</Link>
           <Link to="/contact" className="text-sm font-medium hover:text-primary-400 transition-colors">Contact</Link>
           <Link to="/messages" className="text-sm font-medium hover:text-primary-400 transition-colors">Messages</Link>
         </div>
@@ -130,6 +131,7 @@ const Navbar = () => {
             <Link to="/projects" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Projects</Link>
             <Link to="/blog" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Blog</Link>
             <Link to="/experts" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Experts</Link>
+            <Link to="/live" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Live</Link>
             <Link to="/contact" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Contact</Link>
             <Link to="/messages" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Messages</Link>
             {user ? (

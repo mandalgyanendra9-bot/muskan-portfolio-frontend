@@ -25,6 +25,7 @@ const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Billing = lazy(() => import("./pages/Billing"));
+const Live = lazy(() => import("./pages/Live"));
 
 const PageLoader = () => (
   <div className="min-h-screen bg-surface flex items-center justify-center text-primary-400">
@@ -46,6 +47,7 @@ function App() {
             <Route path="/blog" element={<Blog />} />
             <Route path="/experts" element={<Experts />} />
             <Route path="/expert" element={<Experts />} />
+            <Route path="/live" element={<Live />} />
             <Route path="/contact" element={<Contact />} />
 
             {/* Auth */}
