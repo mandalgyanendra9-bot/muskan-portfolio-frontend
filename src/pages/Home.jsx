@@ -48,6 +48,14 @@ const aiFeatures = [
   "AI-generated Bios",
 ];
 
+const securityFeatures = [
+  "OTP Login",
+  "End-to-End Encryption",
+  "Session Protection",
+  "Anti-Screenshot",
+  "Rate Limiting",
+];
+
 const Home = () => {
   const [projects, setProjects] = useState([]);
   const [experts, setExperts] = useState([]);
@@ -185,6 +193,33 @@ const Home = () => {
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {aiFeatures.map((feature) => (
+              <div key={feature} className="glass rounded-[2rem] p-5 border-white/5">
+                <h3 className="text-white font-bold">{feature}</h3>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Security Features Section */}
+      <div className="py-20 bg-surface border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-10">
+            <div>
+              <span className="inline-flex px-3 py-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 text-emerald-300 text-xs font-extrabold uppercase tracking-wider">
+                Security Features
+              </span>
+              <h2 className="text-4xl font-extrabold text-white mt-4">Safer accounts, sessions, and private content</h2>
+              <p className="text-slate-400 text-lg mt-2 max-w-2xl">
+                Add OTP login, encrypted content tools, protected sessions, privacy controls, and rate limiting.
+              </p>
+            </div>
+            <Link to="/security" className="w-full sm:w-auto text-center px-6 py-3 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold rounded-2xl transition-all active:scale-95">
+              Open Security
+            </Link>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            {securityFeatures.map((feature) => (
               <div key={feature} className="glass rounded-[2rem] p-5 border-white/5">
                 <h3 className="text-white font-bold">{feature}</h3>
               </div>

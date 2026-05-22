@@ -4,6 +4,7 @@ import { Navigate, Routes, Route } from "react-router-dom";
 import { NotificationProvider } from "./context/NotificationContext";
 import NotificationToast from "./components/NotificationToast";
 import ProtectedRoute from "./components/ProtectedRoute";
+import PrivacyShield from "./components/PrivacyShield";
 
 const Home = lazy(() => import("./pages/Home"));
 const About = lazy(() => import("./pages/About"));
@@ -27,6 +28,7 @@ const Profile = lazy(() => import("./pages/Profile"));
 const Billing = lazy(() => import("./pages/Billing"));
 const Live = lazy(() => import("./pages/Live"));
 const AIFeatures = lazy(() => import("./pages/AIFeatures"));
+const Security = lazy(() => import("./pages/Security"));
 
 const PageLoader = () => (
   <div className="min-h-screen bg-surface flex items-center justify-center text-primary-400">
@@ -37,6 +39,7 @@ const PageLoader = () => (
 function App() {
   return (
     <NotificationProvider>
+      <PrivacyShield />
       <Suspense fallback={<PageLoader />}>
         <Routes>
             {/* Public */}
@@ -50,6 +53,7 @@ function App() {
             <Route path="/expert" element={<Experts />} />
             <Route path="/live" element={<Live />} />
             <Route path="/ai" element={<AIFeatures />} />
+            <Route path="/security" element={<Security />} />
             <Route path="/contact" element={<Contact />} />
 
             {/* Auth */}

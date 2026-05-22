@@ -25,7 +25,7 @@ const Navbar = () => {
         </Link>
 
         {/* Navigation Links (Desktop) */}
-        <div className="hidden md:flex items-center space-x-8">
+        <div className="hidden md:flex items-center space-x-5 lg:space-x-6">
           <Link to="/" className="text-sm font-medium hover:text-primary-400 transition-colors">Home</Link>
           <Link to="/about" className="text-sm font-medium hover:text-primary-400 transition-colors">About</Link>
           <Link to="/projects" className="text-sm font-medium hover:text-primary-400 transition-colors">Projects</Link>
@@ -33,6 +33,7 @@ const Navbar = () => {
           <Link to="/experts" className="text-sm font-medium hover:text-primary-400 transition-colors">Experts</Link>
           <Link to="/live" className="text-sm font-medium hover:text-primary-400 transition-colors">Live</Link>
           <Link to="/ai" className="text-sm font-medium hover:text-primary-400 transition-colors">AI</Link>
+          <Link to="/security" className="text-sm font-medium hover:text-primary-400 transition-colors">Security</Link>
           <Link to="/contact" className="text-sm font-medium hover:text-primary-400 transition-colors">Contact</Link>
           <Link to="/messages" className="text-sm font-medium hover:text-primary-400 transition-colors">Messages</Link>
         </div>
@@ -134,6 +135,7 @@ const Navbar = () => {
             <Link to="/experts" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Experts</Link>
             <Link to="/live" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Live</Link>
             <Link to="/ai" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">AI</Link>
+            <Link to="/security" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Security</Link>
             <Link to="/contact" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Contact</Link>
             <Link to="/messages" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Messages</Link>
             {user ? (

@@ -63,6 +63,35 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+body.security-privacy-mode {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body.security-privacy-mode img,
+body.security-privacy-mode video,
+body.security-privacy-mode canvas {
+  -webkit-user-drag: none;
+}
+
+@media print {
+  body.security-privacy-mode #root {
+    filter: blur(18px);
+  }
+
+  body.security-privacy-mode::before {
+    content: "Privacy shield active";
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    display: grid;
+    place-items: center;
+    background: #020617;
+    color: #f8fafc;
+    font: 700 28px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+}
+
 .glass {
   @apply backdrop-blur-md border;
   background: rgba(var(--surface-variant), 0.5);
