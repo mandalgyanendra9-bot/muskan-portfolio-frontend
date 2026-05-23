@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useChat } from "../context/ChatContext";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { motion, AnimatePresence } from "framer-motion";
@@ -35,7 +35,14 @@ const Navbar = () => {
           <Link to="/ai" className="text-sm font-medium hover:text-primary-400 transition-colors">AI</Link>
           <Link to="/security" className="text-sm font-medium hover:text-primary-400 transition-colors">Security</Link>
           <Link to="/contact" className="text-sm font-medium hover:text-primary-400 transition-colors">Contact</Link>
-          <Link to="/messages" className="text-sm font-medium hover:text-primary-400 transition-colors">Messages</Link>
+          <Link to="/messages" className="text-sm font-medium hover:text-primary-400 transition-colors relative">
+            Messages
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-2 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-red-600 text-xs font-bold text-white">
+                {unreadCount}
+              </span>
+            )}
+          </Link>
         </div>
 
         {/* Action Buttons */}
@@ -142,7 +149,14 @@ const Navbar = () => {
             <Link to="/ai" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">AI</Link>
             <Link to="/security" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Security</Link>
             <Link to="/contact" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Contact</Link>
-            <Link to="/messages" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Messages</Link>
+            <Link to="/messages" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5 relative">
+            Messages
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-2 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-red-600 text-xs font-bold text-white">
+                {unreadCount}
+              </span>
+            )}
+          </Link>
             {user ? (
               <>
                 <Link to="/dashboard" onClick={() => setMenuOpen(false)} className="text-base font-bold text-primary-400 py-2 border-b border-white/5">
