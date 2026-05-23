@@ -110,6 +110,7 @@ const MessagesContent = () => {
 
   // ----- Handlers -----
   const sendMessage = async () => {
+  console.log('Attempting to send message', { input, imageFile });
     if (!socket || !currentUserId || !otherId) return;
     let payload;
     if (imageFile) {
@@ -139,7 +140,12 @@ const MessagesContent = () => {
     } else {
       return;
     }
+    // Emit to server
     socket.emit('chatMessage', payload);
+  console.log('Message emitted', payload);
+    // Optimistically add message to UI
+    setMessages((prev) => [...prev, { ...payload, _id: Date.now().toString(), isSeen: false }]);
+    // Reset UI fields
     setInput('');
     setImageFile(null);
     setShowEmoji(false);
@@ -207,7 +213,7 @@ const MessagesContent = () => {
           onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
           className="message-input"
         />
-        <button onClick={sendMessage} className="send-btn">Send</button>
+        <button type="button" onClick={sendMessage} className="send-btn">Send</button>
       </div>
     </div>
   );
