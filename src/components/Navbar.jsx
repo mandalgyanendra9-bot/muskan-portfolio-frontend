@@ -131,7 +131,7 @@ const Navbar = () => {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="md:hidden absolute top-[73px] left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-b border-white/5 p-6 flex flex-col space-y-4 z-40 overflow-hidden shadow-2xl"
+            className="md:hidden absolute top-[73px] left-0 right-0 bg-[#0f172a]/95 backdrop-blur-xl border-b border-white/5 p-6 flex flex-col space-y-4 z-40 overflow-y-auto max-h-[70vh] shadow-2xl"
           >
             <Link to="/" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Home</Link>
             <Link to="/about" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">About</Link>
