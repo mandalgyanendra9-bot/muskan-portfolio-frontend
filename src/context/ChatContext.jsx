@@ -34,20 +34,19 @@ export const ChatProvider = ({ children }) => {
       newSocket.disconnect();
     };
   }, []);
-+
-+  // Join a chat room for a specific booking
-+  const joinRoom = (bookingId, userId) => {
-+    if (socket) {
-+      socket.emit('joinRoom', { bookingId, userId });
-+    }
-+  };
-+
-+  // Send a chat message within a booking room
-+  const sendMessage = (bookingId, payload) => {
-+    if (socket) {
-+      socket.emit('sendMessage', { bookingId, ...payload });
-+    }
-+  };
+// Join a chat room for a specific booking
+const joinRoom = (bookingId, userId) => {
+  if (socket) {
+    socket.emit('joinRoom', { bookingId, userId });
+  }
+};
+
+// Send a chat message within a booking room
+const sendMessage = (bookingId, payload) => {
+  if (socket) {
+    socket.emit('sendMessage', { bookingId, ...payload });
+  }
+};
 
   return (
     <ChatContext.Provider value={{ socket, joinRoom, sendMessage, unreadCount }}>
