@@ -12,8 +12,8 @@ const BookingModal = ({ expert, onClose }) => {
   const [bookingData, setBookingData] = useState({
     expert: expert._id,
     date: "",
-    duration: 1,
-    totalPrice: expert.hourlyRate || 500, // Fallback if hourly rate is 0/undefined
+    duration: 10, // default minutes
+    totalPrice: 200, // default price in rupees
     notes: ""
   });
 
@@ -32,9 +32,12 @@ const BookingModal = ({ expert, onClose }) => {
     setBookingData({
       ...bookingData,
       duration,
-      totalPrice: duration * (expert.hourlyRate || 500) // Fallback if hourly rate is 0/undefined
     });
   };
+const handlePriceChange = (e) => {
+  const price = parseInt(e.target.value);
+  setBookingData({ ...bookingData, totalPrice: price });
+};
 
   const handleSlotSelect = (time) => {
     if (!selectedDate) {
@@ -106,44 +109,49 @@ const BookingModal = ({ expert, onClose }) => {
               />
             </div>
 
-            {/* Step 2: Choose Available Slot */}
+            {/* Step 2: Choose Start Time */}
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">Step 2: Choose Time Slot</label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {timeSlots.map(time => (
-                  <button
-                    key={time}
-                    type="button"
-                    onClick={() => handleSlotSelect(time)}
-                    className={`py-3 px-2 rounded-xl text-xs font-bold transition-all active:scale-95 border ${
-                      selectedTime === time 
-                        ? 'bg-primary-500 border-primary-500 text-white shadow-lg shadow-primary-500/25' 
-                        : 'bg-white/5 border-white/5 text-slate-400 hover:text-white hover:border-white/10'
-                    }`}
-                  >
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">Select Start Time</label>
+              <select
+                className="w-full bg-[#0f172a] border border-white/10 rounded-2xl px-6 py-4.5 focus:border-primary-500 transition-all text-text-main text-sm"
+                value={selectedTime}
+                onChange={(e) => handleSlotSelect(e.target.value)}
+                required
+              >
+                <option value="">-- Choose Time --</option>
+                {timeSlots.map((time) => (
+                  <option key={time} value={time}>
                     {time}
-                  </button>
+                  </option>
                 ))}
-              </div>
+              </select>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">Duration (Hours)</label>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">Duration (Minutes)</label>
                 <select 
                   className="w-full bg-[#0f172a] border border-white/10 rounded-2xl px-6 py-4.5 focus:border-primary-500 transition-all text-text-main text-sm"
                   value={bookingData.duration}
                   onChange={handleDurationChange}
                 >
-                  {[1, 2, 3, 4, 5].map(h => <option key={h} value={h}>{h} Hour{h > 1 ? 's' : ''}</option>)}
+                  {[10, 20, 30, 40, 50].map(m => (
+                    <option key={m} value={m}>{m} Minutes</option>
+                  ))}
                 </select>
               </div>
               
               <div className="space-y-2">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">Total Amount (₹)</label>
-                <div className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4.5 font-extrabold text-xl text-primary-400 flex items-center">
-                  ₹{bookingData.totalPrice}
-                </div>
+                <select 
+                  className="w-full bg-[#0f172a] border border-white/10 rounded-2xl px-6 py-4.5 focus:border-primary-500 transition-all text-text-main text-sm"
+                  value={bookingData.totalPrice}
+                  onChange={handlePriceChange}
+                >
+                  {[200, 400, 500, 600].map(p => (
+                    <option key={p} value={p}>₹{p}</option>
+                  ))}
+                </select>
               </div>
             </div>
 

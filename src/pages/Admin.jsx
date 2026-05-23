@@ -600,12 +600,11 @@ setPayouts(payoutsRes.data);
                         </thead>
                         <tbody className="divide-y divide-white/5 text-slate-300">
                           {filteredBookings.map((booking) => (
-                            <tr key={booking._id} className="hover:bg-white/[0.03]">
                               <td className="p-4"><UserMini user={booking.client} /></td>
                               <td className="p-4"><UserMini user={booking.expert} /></td>
                               <td className="p-4">
                                 <p className="font-bold text-white">{formatDate(booking.date)}</p>
-                                <p className="text-xs text-slate-500">{booking.duration || 1} hr session</p>
+                                <p className="text-xs text-slate-500">{booking.duration} min session</p>
                               </td>
                               <td className="p-4 font-bold text-white">{formatMoney(booking.totalPrice)}</td>
                               <td className="p-4">
