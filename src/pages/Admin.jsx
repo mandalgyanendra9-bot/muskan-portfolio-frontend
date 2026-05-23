@@ -600,6 +600,7 @@ setPayouts(payoutsRes.data);
                         </thead>
                         <tbody className="divide-y divide-white/5 text-slate-300">
                           {filteredBookings.map((booking) => (
+                              <tr key={booking._id}>
                               <td className="p-4"><UserMini user={booking.client} /></td>
                               <td className="p-4"><UserMini user={booking.expert} /></td>
                               <td className="p-4">
