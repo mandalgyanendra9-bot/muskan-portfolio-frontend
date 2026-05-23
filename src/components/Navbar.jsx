@@ -66,6 +66,11 @@ const Navbar = () => {
               <Link to="/billing" className="text-sm font-bold text-slate-300 hover:text-primary-400 transition-colors hidden sm:block">
                 Billing
               </Link>
+              {(user?.role === "admin" || user?.email === "mandalgyanu2823297@gmail.com") && (
+                <Link to="/admin" className="text-sm font-bold text-red-300 hover:text-red-200 transition-colors hidden lg:block">
+                  Admin
+                </Link>
+              )}
               {/* My Profile Link (Desktop) */}
               <Link to="/profile" className="text-sm font-bold text-slate-300 hover:text-primary-400 transition-colors hidden sm:block">
                 My Profile
@@ -149,6 +154,11 @@ const Navbar = () => {
                 <Link to="/billing" onClick={() => setMenuOpen(false)} className="text-base font-bold text-slate-300 hover:text-primary-400 py-2 border-b border-white/5 transition-colors">
                   Billing
                 </Link>
+                {user?.isAdmin && (
+                  <Link to="/admin" onClick={() => setMenuOpen(false)} className="text-base font-bold text-red-300 hover:text-red-200 py-2 border-b border-white/5 transition-colors">
+                    Admin Dashboard
+                  </Link>
+                )}
                 <Link to="/profile" onClick={() => setMenuOpen(false)} className="text-base font-bold text-slate-300 hover:text-primary-400 py-2 border-b border-white/5 transition-colors">
                   My Profile
                 </Link>

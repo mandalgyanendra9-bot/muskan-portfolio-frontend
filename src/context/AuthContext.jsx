@@ -1,4 +1,5 @@
 import { createContext, useContext, useState } from "react";
+import { isAdminUser } from "../utils/adminAccess";
 
 const AuthContext = createContext();
 
@@ -9,7 +10,7 @@ export const AuthProvider = ({ children }) => {
     const parsed = JSON.parse(savedUser);
     return {
       ...parsed,
-      isAdmin: parsed?.role?.toLowerCase() === "admin" || parsed?.isAdmin || false,
+      isAdmin: isAdminUser(parsed),
     };
   });
 
@@ -17,7 +18,7 @@ export const AuthProvider = ({ children }) => {
     // Ensure admin flag is present for role based checks
     const enriched = {
       ...data,
-      isAdmin: data?.role?.toLowerCase() === 'admin' || data?.isAdmin || false,
+      isAdmin: isAdminUser(data),
     };
     localStorage.setItem("user", JSON.stringify(enriched));
     setUser(enriched);
@@ -26,7 +27,7 @@ export const AuthProvider = ({ children }) => {
   const updateUser = (data) => {
     const enriched = {
       ...data,
-      isAdmin: data?.role?.toLowerCase() === 'admin' || data?.isAdmin || false,
+      isAdmin: isAdminUser(data),
     };
     localStorage.setItem("user", JSON.stringify(enriched));
     setUser(enriched);

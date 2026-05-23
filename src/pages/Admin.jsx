@@ -13,12 +13,14 @@ const tabs = [
   { id: "users", label: "Manage Users", short: "US" },
   { id: "profiles", label: "Block/Verify Profiles", short: "PV" },
   { id: "revenue", label: "Revenue Analytics", short: "RA" },
+  { id: "payouts", label: "Payout Management", short: "PY" },
   { id: "reports", label: "Reports & Complaints", short: "RC" },
   { id: "bookings", label: "Booking Management", short: "BM" },
 ];
 
 const bookingStatuses = ["pending", "confirmed", "completed", "cancelled"];
 const paymentStatuses = ["unpaid", "paid", "refunded"];
+const payoutStatuses = ["pending", "processed", "rejected"];
 
 const money = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -69,6 +71,7 @@ const Admin = () => {
   const [analytics, setAnalytics] = useState(null);
   const [users, setUsers] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [payouts, setPayouts] = useState([]);
   const [reports, setReports] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -76,6 +79,7 @@ const Admin = () => {
 
   const [userSearch, setUserSearch] = useState("");
   const [paymentSearch, setPaymentSearch] = useState("");
+  const [payoutSearch, setPayoutSearch] = useState("");
   const [bookingSearch, setBookingSearch] = useState("");
   const [reportSearch, setReportSearch] = useState("");
 
@@ -83,19 +87,23 @@ const Admin = () => {
     setRefreshing(true);
     try {
       const headers = getAuthHeaders();
-      const [analyticsRes, usersRes, paymentsRes, reportsRes, bookingsRes] = await Promise.all([
-        axios.get(`${API_BASE}/admin/analytics`, { headers }),
-        axios.get(`${API_BASE}/admin/users`, { headers }),
-        axios.get(`${API_BASE}/admin/payments`, { headers }),
-        axios.get(`${API_BASE}/admin/reports`, { headers }),
-        axios.get(`${API_BASE}/admin/bookings`, { headers }),
-      ]);
+// Remove duplicate state declarations (already defined at top)
+// Fetch payouts along with other admin data
+const [analyticsRes, usersRes, paymentsRes, reportsRes, bookingsRes, payoutsRes] = await Promise.all([
+  axios.get(`${API_BASE}/admin/analytics`, { headers }),
+  axios.get(`${API_BASE}/admin/users`, { headers }),
+  axios.get(`${API_BASE}/admin/payments`, { headers }),
+  axios.get(`${API_BASE}/admin/reports`, { headers }),
+  axios.get(`${API_BASE}/admin/bookings`, { headers }),
+  axios.get(`${API_BASE}/payouts/pending`, { headers }),
+]);
 
-      setAnalytics(analyticsRes.data);
-      setUsers(usersRes.data);
-      setPayments(paymentsRes.data);
-      setReports(reportsRes.data);
-      setBookings(bookingsRes.data);
+setAnalytics(analyticsRes.data);
+setUsers(usersRes.data);
+setPayments(paymentsRes.data);
+setReports(reportsRes.data);
+setBookings(bookingsRes.data);
+setPayouts(payoutsRes.data);
       if (showToast) toast.success("Admin dashboard refreshed");
     } catch (err) {
       console.error(err);
@@ -199,6 +207,20 @@ const Admin = () => {
       ].some((field) => lower(field).includes(query))
     );
   }, [payments, paymentSearch]);
+
+  const filteredPayouts = useMemo(() => {
+    const query = lower(payoutSearch);
+    return payouts.filter((payout) =>
+      [
+        payout.expert?.name,
+        payout.amount,
+        payout.commission,
+        payout.netAmount,
+        payout.status,
+        payout.transactionId,
+      ].some((field) => lower(field).includes(query))
+    );
+  }, [payouts, payoutSearch]);
 
   const filteredReports = useMemo(() => {
     const query = lower(reportSearch);
