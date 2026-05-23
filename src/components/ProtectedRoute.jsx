@@ -1,4 +1,5 @@
 import { Navigate } from "react-router-dom";
+import { isAdminUser } from "../utils/adminAccess";
 import { useAuth } from "../context/AuthContext";
 
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -12,7 +13,7 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
     return <Navigate to="/login" />;
   }
 
-  if (adminOnly && !user?.isAdmin) {
+  if (adminOnly && !isAdminUser(user)) {
     return <Navigate to="/" replace />;
   }
 
