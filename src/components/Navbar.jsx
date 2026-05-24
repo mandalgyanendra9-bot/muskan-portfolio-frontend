@@ -3,9 +3,12 @@ import { useChat } from "../context/ChatContext";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { motion, AnimatePresence } from "framer-motion";
+import { Link, useNavigate } from "react-router-dom";
 
 const Navbar = () => {
   const { user, logout } = useAuth();
+  const { unreadCount = 0 } = useChat() || {};
+  const unread = unreadCount ?? 0;
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -37,9 +40,9 @@ const Navbar = () => {
           <Link to="/contact" className="text-sm font-medium hover:text-primary-400 transition-colors">Contact</Link>
           <Link to="/messages" className="text-sm font-medium hover:text-primary-400 transition-colors relative">
             Messages
-            {unreadCount > 0 && (
+            {unread > 0 && (
               <span className="absolute -top-1 -right-2 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-red-600 text-xs font-bold text-white">
-                {unreadCount}
+                {unread}
               </span>
             )}
           </Link>
@@ -151,9 +154,9 @@ const Navbar = () => {
             <Link to="/contact" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5">Contact</Link>
             <Link to="/messages" onClick={() => setMenuOpen(false)} className="text-base font-medium hover:text-primary-400 transition-colors py-2 border-b border-white/5 relative">
             Messages
-            {unreadCount > 0 && (
+            {unread > 0 && (
               <span className="absolute -top-1 -right-2 inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-red-600 text-xs font-bold text-white">
-                {unreadCount}
+                {unread}
               </span>
             )}
           </Link>
