@@ -142,12 +142,33 @@ const Profile = () => {
     try {
       const token = localStorage.getItem("token");
       const fd = new FormData();
-      Object.keys(form).forEach(k => {
-        if (k === "skills") fd.append("skills", form.skills.join(","));
-        else fd.append(k, form[k]);
-      });
-      fd.append("availabilitySchedule", JSON.stringify(schedule));
+      
+      const basicFields = [
+        "name",
+        "title",
+        "location",
+        "experience",
+        "bio",
+        "github",
+        "linkedin",
+        "portfolio",
+        "role",
+        "isAvailable",
+      ];
+      basicFields.forEach((k) => fd.append(k, form[k] ?? ""));
+      fd.append("skills", form.skills.join(","));
+      
+      if (form.role === "expert") {
+        fd.append("hourlyRate", String(form.hourlyRate ?? 0));
+        fd.append("pricePerMinute", String(form.pricePerMinute ?? 0));
+        fd.append("category", form.category ?? "");
+        fd.append("introVideo", form.introVideo ?? "");
+        fd.append("exclusiveContent", form.exclusiveContent ?? "");
+        fd.append("availabilitySchedule", JSON.stringify(schedule));
+      }
+      
       if (imageFile) fd.append("profileImage", imageFile);
+      
       const res = await API.put("/profiles/update", fd, {
         headers: { Authorization: token, "Content-Type": "multipart/form-data" },
       });
