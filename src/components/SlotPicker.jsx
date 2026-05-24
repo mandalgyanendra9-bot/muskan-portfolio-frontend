@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -7,27 +7,29 @@ import toast from 'react-hot-toast';
  * SlotPicker
  * -------
  * Props:
- *   - expertId: string – the MongoDB _id of the expert whose slots we fetch.
+ *   - expertId: string – MongoDB _id of the expert whose slots we fetch.
  *   - onSelect: (slot: { start: Date; end: Date }) => void – callback when a slot is chosen.
  *
- * The component fetches slots from the backend endpoint `/api/slots/:expertId`.
- * Each slot returned by the API is expected to have `slotStart` and `slotEnd` ISO strings.
- * The UI displays the slots in a responsive grid. Selecting a slot highlights it
- * and informs the parent via `onSelect`.
+ * The component fetches slots from `/api/slots/:expertId?date=YYYY-MM-DD`.
+ * Each slot returned should contain `slotStart` and `slotEnd` ISO strings.
+ * Users can select a date, see available slots, and pick one.
  */
 export default function SlotPicker({ expertId, onSelect }) {
+  // Date selector – default to today in YYYY-MM-DD format
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [slots, setSlots] = useState([]);
   const [selectedIdx, setSelectedIdx] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Fetch slots whenever expertId or selected date changes
   useEffect(() => {
     if (!expertId) return;
     const fetchSlots = async () => {
       try {
         setLoading(true);
-        const { data } = await axios.get(`/api/slots/${expertId}`);
-        // Expected shape: [{ slotStart: '2026-05-30T09:00:00Z', slotEnd: '2026-05-30T09:30:00Z' }, ...]
+        const { data } = await axios.get(`/api/slots/${expertId}?date=${date}`);
+        // Expected: [{ slotStart: '...', slotEnd: '...' }, ...]
         const parsed = data.map((s) => ({
           start: new Date(s.slotStart),
           end: new Date(s.slotEnd),
@@ -43,45 +45,69 @@ export default function SlotPicker({ expertId, onSelect }) {
       }
     };
     fetchSlots();
-  }, [expertId]);
+  }, [expertId, date]);
 
   const handleSelect = (idx) => {
     setSelectedIdx(idx);
-    onSelect(slots[idx]);
+    onSelect && onSelect(slots[idx]);
   };
 
-  if (loading) {
-    return <p className="text-sm text-gray-400">Loading available slots…</p>;
-  }
-
-  if (error) {
-    return <p className="text-sm text-red-500">{error}</p>;
-  }
-
-  if (slots.length === 0) {
-    return <p className="text-sm text-gray-500">No slots available for the selected expert.</p>;
-  }
-
+  // UI rendering
   return (
     <AnimatePresence>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-        {slots.map((slot, idx) => {
-          const startStr = slot.start.toLocaleString(undefined, { hour: 'numeric', minute: 'numeric', hour12: true });
-          const endStr = slot.end.toLocaleString(undefined, { hour: 'numeric', minute: 'numeric', hour12: true });
-          const isSelected = idx === selectedIdx;
-          return (
-            <motion.button
-              key={idx}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => handleSelect(idx)}
-              className={`p-4 rounded-xl border ${isSelected ? 'border-primary-500 bg-primary-500/10' : 'border-gray-300'} transition-colors`}
-            >
-              <span className="block font-medium text-gray-200">{startStr} – {endStr}</span>
-            </motion.button>
-          );
-        })}
+      {/* Date picker */}
+      <div className="mb-4">
+        <label className="block text-xs font-medium text-slate-500 mb-1">
+          Select Date
+        </label>
+        <input
+          type="date"
+          value={date}
+          min={new Date().toISOString().split('T')[0]}
+          className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-2 focus:border-primary-500 text-text-main"
+          onChange={(e) => setDate(e.target.value)}
+        />
       </div>
+
+      {loading && <p className="text-sm text-gray-400">Loading available slots…</p>}
+      {error && <p className="text-sm text-red-500">{error}</p>}
+
+      {!loading && !error && slots.length === 0 && (
+        <p className="text-sm text-gray-500">No slots available for the selected date.</p>
+      )}
+
+      {!loading && !error && slots.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          {slots.map((slot, idx) => {
+            const startStr = slot.start.toLocaleString(undefined, {
+              hour: 'numeric',
+              minute: 'numeric',
+              hour12: true,
+            });
+            const endStr = slot.end.toLocaleString(undefined, {
+              hour: 'numeric',
+              minute: 'numeric',
+              hour12: true,
+            });
+            const isSelected = idx === selectedIdx;
+            return (
+              <motion.button
+                key={idx}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleSelect(idx)}
+                className={`p-4 rounded-xl border ${
+                  isSelected ? 'border-primary-500 bg-primary-500/10' : 'border-gray-300'
+                } transition-colors`}
+              >
+                <span className="block font-medium text-gray-200">
+                  {startStr} – {endStr}
+                </span>
+              </motion.button>
+            );
+          })}
+        </div>
+      )}
     </AnimatePresence>
   );
 }
