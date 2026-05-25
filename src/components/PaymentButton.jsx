@@ -61,6 +61,7 @@ const PaymentButton = ({ bookingData, onSuccess }) => {
           card: true,
           netbanking: true,
           wallet: true,
+          paylater: true,
         },
         handler: async (response) => {
           try {

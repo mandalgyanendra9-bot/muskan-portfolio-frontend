@@ -13,7 +13,7 @@ const Register = () => {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [registered, setRegistered] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState("");
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "client" });
+  const [form, setForm] = useState({ name: "", email: "", password: "" });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -123,8 +123,8 @@ const Register = () => {
               <input type="password" placeholder="Min. 6 characters" className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:outline-none focus:border-primary-500 transition-all placeholder-slate-600" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300 ml-1">Account Type</label>
-              <select className="w-full bg-[#0f172a] border border-white/10 rounded-xl px-5 py-3 focus:outline-none focus:border-primary-500 transition-all text-white" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
+              <label className="hidden">Account Type</label>
+              <select className="hidden" value="client" onChange={() => {}}>
                 <option value="client">Client — Hire & Book Experts</option>
                 <option value="expert">Expert — Offer Services</option>
               </select>

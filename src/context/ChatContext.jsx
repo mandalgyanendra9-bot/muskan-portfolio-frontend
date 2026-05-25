@@ -1,60 +1,76 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import { io } from 'socket.io-client';
-import axios from 'axios';
+import { createContext, useContext, useEffect, useState } from "react";
+import { io } from "socket.io-client";
+import axios from "axios";
+import { useAuth } from "./AuthContext";
 
 const ChatContext = createContext();
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+
+const getAuthHeaders = () => {
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: token } : {};
+};
 
 export const ChatProvider = ({ children }) => {
+  const { user } = useAuth();
   const [socket, setSocket] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    const newSocket = io(import.meta.env.VITE_API_URL, {
-      withCredentials: true,
-      transports: ['websocket'],
-    });
-    setSocket(newSocket);
-
-    // Load initial unread count
-    const userId = localStorage.getItem('userId');
-    if (userId) {
-      axios.get(`${import.meta.env.VITE_API_URL}/api/chat/unread/${userId}`)
-        .then(res => setUnreadCount(res.data.unread || 0))
-        .catch(err => console.error('Failed to fetch unread count', err));
+    if (!user?._id || !API_URL) {
+      setSocket(null);
+      setUnreadCount(0);
+      return undefined;
     }
 
-    // Listen for unread updates
-    newSocket.on('unreadUpdate', data => {
-      if (data && typeof data.unread === 'number') {
+    const token = localStorage.getItem("token");
+    const newSocket = io(API_URL, {
+      auth: { token },
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+    });
+
+    setSocket(newSocket);
+    newSocket.emit("join", user._id);
+
+    axios
+      .get(`${API_URL}/api/chat/unread/${user._id}`, { headers: getAuthHeaders() })
+      .then((res) => setUnreadCount(res.data.unread ?? res.data.unreadCount ?? 0))
+      .catch((err) => console.error("Failed to fetch unread count", err));
+
+    newSocket.on("connect", () => {
+      newSocket.emit("join", user._id);
+    });
+
+    newSocket.on("unreadUpdate", (data) => {
+      if (data && typeof data.unread === "number") {
         setUnreadCount(data.unread);
       }
     });
 
     return () => {
       newSocket.disconnect();
+      setSocket(null);
     };
-  }, []);
-// Join a chat room for a specific booking
-const joinRoom = (bookingId, userId) => {
-  if (socket) {
-    socket.emit('joinRoom', { bookingId, userId });
-  }
-};
+  }, [user?._id]);
 
-// Send a chat message within a booking room
-const sendMessage = (bookingId, payload) => {
-  if (socket) {
-    socket.emit('sendMessage', { bookingId, ...payload });
-  }
-};
+  const joinRoom = (bookingId, userId = user?._id) => {
+    if (socket && bookingId && userId) {
+      socket.emit("joinRoom", { bookingId, userId });
+    }
+  };
+
+  const sendMessage = (bookingId, payload) => {
+    if (socket && bookingId) {
+      socket.emit("sendMessage", { bookingId, ...payload });
+    }
+  };
 
   return (
-    <ChatContext.Provider value={{ socket, joinRoom, sendMessage, unreadCount }}>
+    <ChatContext.Provider value={{ socket, joinRoom, sendMessage, unreadCount, setUnreadCount }}>
       {children}
     </ChatContext.Provider>
   );
 };
 
 export const useChat = () => useContext(ChatContext);
-
-

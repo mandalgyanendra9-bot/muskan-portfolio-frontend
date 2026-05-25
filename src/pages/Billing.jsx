@@ -96,6 +96,7 @@ const Billing = () => {
           card: true,
           netbanking: true,
           wallet: true,
+          paylater: true,
         },
         handler: async function (response) {
           try {

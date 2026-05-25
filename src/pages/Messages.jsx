@@ -1,219 +1,369 @@
-import { useEffect, useState, useRef } from 'react';
-import { useParams } from 'react-router-dom';
-import axios from 'axios';
-import { ChatProvider, useChat } from '../context/ChatContext';
-import EmojiPicker from 'emoji-picker-react';
-import './Messages.css';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import EmojiPicker from "emoji-picker-react";
+import { ChatProvider, useChat } from "../context/ChatContext";
+import { useAuth } from "../context/AuthContext";
+import API from "../services/api";
+import Navbar from "../components/Navbar";
+import "./Messages.css";
+
+const API_URL = import.meta.env.VITE_API_URL || "";
+
+const getAuthHeaders = (extra = {}) => {
+  const token = localStorage.getItem("token");
+  return token ? { ...extra, Authorization: token } : extra;
+};
+
+const idOf = (value) => {
+  if (!value) return "";
+  if (value._id) return String(value._id);
+  return String(value);
+};
+
+const getAssetUrl = (path) => {
+  if (!path) return "";
+  return path.startsWith("http") ? path : `${API_URL}${path}`;
+};
 
 const MessagesContent = () => {
-  // ----- Params & Context -----
-  const { otherId } = useParams(); // ID of the user we are chatting with
+  const { otherId } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const { socket } = useChat();
+  const currentUserId = user?._id;
 
-  // ----- State -----
+  const [contacts, setContacts] = useState([]);
+  const [selectedUserId, setSelectedUserId] = useState(otherId || "");
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState("");
   const [typingUsers, setTypingUsers] = useState([]);
-  const [currentUserId] = useState(() => localStorage.getItem('userId'));
+  const [loadingContacts, setLoadingContacts] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [sending, setSending] = useState(false);
 
-  // ----- Refs -----
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
-  // ----- Helpers -----
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const selectedContact = useMemo(
+    () => contacts.find((contact) => idOf(contact._id) === selectedUserId),
+    [contacts, selectedUserId]
+  );
+
+  const appendMessage = (message) => {
+    setMessages((prev) => {
+      if (prev.some((item) => idOf(item._id) === idOf(message._id))) return prev;
+      return [...prev, message];
+    });
   };
 
-  // Join private room when socket & user ID are ready
   useEffect(() => {
-    if (socket && currentUserId) {
-      socket.emit('join', currentUserId);
-    }
-  }, [socket, currentUserId]);
+    if (otherId) setSelectedUserId(otherId);
+  }, [otherId]);
 
-  // Fetch chat history whenever IDs are ready
   useEffect(() => {
-    const fetchHistory = async () => {
+    const fetchContacts = async () => {
+      setLoadingContacts(true);
       try {
-        const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/chat/messages/${currentUserId}/${otherId}`);
-        setMessages(res.data);
-      } catch (err) {
-        console.error('Failed to fetch messages', err);
+        const res = await API.get("/chat/contacts", { headers: getAuthHeaders() });
+        setContacts(res.data || []);
+        if (!selectedUserId && res.data?.[0]?._id) {
+          setSelectedUserId(idOf(res.data[0]._id));
+        }
+      } catch (error) {
+        console.error("Failed to fetch contacts", error);
+      } finally {
+        setLoadingContacts(false);
       }
     };
-    if (currentUserId && otherId) {
-      fetchHistory();
-    }
-  }, [currentUserId, otherId]);
 
-  // Socket listeners (new messages, typing, seen status)
+    if (currentUserId) fetchContacts();
+  }, [currentUserId]);
+
   useEffect(() => {
-    if (!socket) return;
+    const fetchHistory = async () => {
+      if (!currentUserId || !selectedUserId) {
+        setMessages([]);
+        return;
+      }
 
-    const handleNewMessage = (msg) => setMessages((prev) => [...prev, msg]);
-    const handleTyping = ({ sender }) => {
-      setTypingUsers((prev) => (!prev.includes(sender) ? [...prev, sender] : prev));
-      setTimeout(() => {
-        setTypingUsers((prev) => prev.filter((id) => id !== sender));
-      }, 3000);
+      setLoadingMessages(true);
+      try {
+        const res = await API.get(`/chat/messages/${currentUserId}/${selectedUserId}`, {
+          headers: getAuthHeaders(),
+        });
+        setMessages(res.data || []);
+      } catch (error) {
+        console.error("Failed to fetch messages", error);
+        setMessages([]);
+      } finally {
+        setLoadingMessages(false);
+      }
     };
+
+    fetchHistory();
+  }, [currentUserId, selectedUserId]);
+
+  useEffect(() => {
+    if (!socket || !currentUserId) return undefined;
+    socket.emit("join", currentUserId);
+
+    const handleNewMessage = (message) => {
+      const senderId = idOf(message.sender);
+      const recipientId = idOf(message.recipient);
+      const belongsToOpenChat =
+        selectedUserId &&
+        ((senderId === currentUserId && recipientId === selectedUserId) ||
+          (senderId === selectedUserId && recipientId === currentUserId));
+
+      setContacts((prev) => {
+        const otherUser = senderId === currentUserId ? message.recipient : message.sender;
+        if (!otherUser?._id || prev.some((contact) => idOf(contact._id) === idOf(otherUser._id))) return prev;
+        return [otherUser, ...prev];
+      });
+
+      if (belongsToOpenChat) appendMessage(message);
+    };
+
+    const handleTyping = ({ sender }) => {
+      if (!sender || sender !== selectedUserId) return;
+      setTypingUsers((prev) => (!prev.includes(sender) ? [...prev, sender] : prev));
+      window.setTimeout(() => {
+        setTypingUsers((prev) => prev.filter((id) => id !== sender));
+      }, 2200);
+    };
+
     const handleSeen = ({ messageIds }) => {
       setMessages((prev) =>
-        prev.map((msg) => (messageIds.includes(msg._id) ? { ...msg, isSeen: true } : msg))
+        prev.map((message) => (messageIds.includes(idOf(message._id)) ? { ...message, isSeen: true } : message))
       );
     };
 
-    socket.on('newMessage', handleNewMessage);
-    socket.on('typing', handleTyping);
-    socket.on('messagesSeen', handleSeen);
+    socket.on("newMessage", handleNewMessage);
+    socket.on("typing", handleTyping);
+    socket.on("messagesSeen", handleSeen);
 
     return () => {
-      socket.off('newMessage', handleNewMessage);
-      socket.off('typing', handleTyping);
-      socket.off('messagesSeen', handleSeen);
+      socket.off("newMessage", handleNewMessage);
+      socket.off("typing", handleTyping);
+      socket.off("messagesSeen", handleSeen);
     };
-  }, [socket]);
+  }, [socket, currentUserId, selectedUserId]);
 
-  // Emit typing event (debounced)
   useEffect(() => {
-    if (!socket) return;
-    const timeout = setTimeout(() => {
-      if (input.trim()) {
-        socket.emit('typing', { sender: currentUserId, recipient: otherId });
-      }
-    }, 500);
-    return () => clearTimeout(timeout);
-  }, [input, socket, currentUserId, otherId]);
-
-  // Mark unseen messages as seen when they appear
-  useEffect(() => {
-    if (!socket || !messages.length) return;
+    if (!currentUserId || !messages.length) return;
     const unseen = messages
-      .filter((msg) => msg.recipient === currentUserId && !msg.isSeen)
-      .map((msg) => msg._id);
-    if (unseen.length) {
-      socket.emit('seen', { messageIds: unseen });
-    }
-  }, [socket, messages, currentUserId]);
+      .filter((message) => idOf(message.recipient) === currentUserId && !message.isSeen)
+      .map((message) => idOf(message._id));
 
-  // Scroll to bottom on new messages
+    if (!unseen.length) return;
+
+    API.post("/chat/seen", { messageIds: unseen }, { headers: getAuthHeaders() }).catch(() => {});
+    socket?.emit("seen", { messageIds: unseen });
+  }, [messages, currentUserId, socket]);
+
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loadingMessages]);
 
-  // ----- Render loading state if socket not ready -----
-  if (!socket) {
-    return <div className="chat-loading">Connecting to chat…</div>;
-  }
+  useEffect(() => {
+    if (!socket || !input.trim() || !selectedUserId || !currentUserId) return undefined;
+    const timeoutId = window.setTimeout(() => {
+      socket.emit("typing", { sender: currentUserId, recipient: selectedUserId });
+    }, 450);
+    return () => window.clearTimeout(timeoutId);
+  }, [input, socket, currentUserId, selectedUserId]);
 
-  // ----- Handlers -----
+  const handleSelectContact = (contactId) => {
+    setSelectedUserId(contactId);
+    navigate(`/messages/${contactId}`, { replace: false });
+  };
+
+  const handleFileChange = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
+  const clearImage = () => {
+    setImageFile(null);
+    setImagePreview("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   const sendMessage = async () => {
-  console.log('Attempting to send message', { input, imageFile });
-    if (!socket || !currentUserId || !otherId) return;
-    let payload;
-    if (imageFile) {
-      const form = new FormData();
-      form.append('image', imageFile);
-      try {
-        const uploadRes = await axios.post(`${import.meta.env.VITE_API_URL}/api/chat/upload-image`, form, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+    if (!selectedUserId || sending) return;
+    const text = input.trim();
+    if (!text && !imageFile) return;
+
+    setSending(true);
+    try {
+      let payload;
+
+      if (imageFile) {
+        const form = new FormData();
+        form.append("image", imageFile);
+        const uploadRes = await API.post("/chat/upload-image", form, {
+          headers: getAuthHeaders({ "Content-Type": "multipart/form-data" }),
         });
         payload = {
-          sender: currentUserId,
-          recipient: otherId,
-          messageType: 'image',
+          recipient: selectedUserId,
+          messageType: "image",
           message: uploadRes.data.imageUrl || uploadRes.data.url,
         };
-      } catch (err) {
-        console.error('Image upload failed', err);
-        return;
+      } else {
+        payload = {
+          recipient: selectedUserId,
+          messageType: "text",
+          message: text,
+        };
       }
-    } else if (input.trim()) {
-      payload = {
-        sender: currentUserId,
-        recipient: otherId,
-        messageType: 'text',
-        message: input.trim(),
-      };
-    } else {
-      return;
-    }
-    // Emit to server
-    socket.emit('chatMessage', payload);
-  console.log('Message emitted', payload);
-    // Optimistically add message to UI
-    setMessages((prev) => [...prev, { ...payload, _id: Date.now().toString(), isSeen: false }]);
-    // Reset UI fields
-    setInput('');
-    setImageFile(null);
-    setShowEmoji(false);
-    const fileInput = document.getElementById('imageUpload');
-    if (fileInput) fileInput.value = '';
-  };
 
-  const onEmojiClick = (emojiObject) => {
-    if (emojiObject?.emoji) {
-      setInput((prev) => prev + emojiObject.emoji);
+      const res = await API.post("/chat/messages", payload, { headers: getAuthHeaders() });
+      appendMessage(res.data);
+      setInput("");
+      setShowEmoji(false);
+      clearImage();
+    } catch (error) {
+      console.error("Message send failed", error);
+      alert(error.response?.data?.message || "Message send failed. Please try again.");
+    } finally {
+      setSending(false);
     }
   };
 
-  const renderMessage = (msg) => {
-    const isMe = msg.sender === currentUserId;
-    const containerClass = isMe ? 'msg-bubble me' : 'msg-bubble other';
+  const renderMessage = (message) => {
+    const isMe = idOf(message.sender) === currentUserId;
     return (
-      <div key={msg._id} className={containerClass}>
-        {msg.messageType === 'image' ? (
-          <img src={msg.message} alt="sent" className="sent-image" />
-        ) : (
-          <span>{msg.message}</span>
-        )}
-        {isMe && msg.isSeen && <span className="seen-indicator">✓✓</span>}
+      <div key={idOf(message._id)} className={`msg-row ${isMe ? "me" : "other"}`}>
+        <div className={`msg-bubble ${isMe ? "me" : "other"}`}>
+          {message.messageType === "image" ? (
+            <img src={getAssetUrl(message.message)} alt="Sent attachment" className="sent-image" />
+          ) : (
+            <span>{message.message}</span>
+          )}
+          {isMe && message.isSeen ? <span className="seen-indicator">Seen</span> : null}
+        </div>
       </div>
     );
   };
 
   return (
-    <div className="chat-page">
-      <div className="chat-header">
-        <h2>Chat with {otherId}</h2>
-      </div>
-      <div className="chat-body">
-        {messages.map(renderMessage)}
-        {typingUsers.length > 0 && (
-          <div className="typing-indicator">{typingUsers[0]} is typing...</div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-      <div className="chat-footer">
-        {showEmoji && (
-          <div className="emoji-picker-wrapper">
-            <EmojiPicker onEmojiClick={onEmojiClick} />
+    <div className="min-h-screen bg-surface text-white">
+      <Navbar />
+      <div className="messages-shell">
+        <aside className="chat-sidebar">
+          <div className="chat-sidebar-header">
+            <h2>Messages</h2>
+            <p>{loadingContacts ? "Loading contacts..." : `${contacts.length} contacts`}</p>
           </div>
-        )}
-        <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            style={{ display: 'none' }}
-            id="imageUpload"
-            onChange={(e) => {
-              const file = e.target.files[0];
-              if (file) setImageFile(file);
-            }}
-          />
-        <button onClick={() => setShowEmoji((prev) => !prev)} className="emoji-btn">😀</button>
-          <button onClick={() => document.getElementById('imageUpload').click()} className="image-btn" aria-label="Upload image">📷</button>
-        <input
-          type="text"
-          placeholder="Type a message..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-          className="message-input"
-        />
-        <button type="button" onClick={sendMessage} className="send-btn">Send</button>
+          <div className="chat-contact-list">
+            {contacts.map((contact) => {
+              const contactId = idOf(contact._id);
+              const active = contactId === selectedUserId;
+              return (
+                <button
+                  type="button"
+                  key={contactId}
+                  onClick={() => handleSelectContact(contactId)}
+                  className={`chat-contact ${active ? "active" : ""}`}
+                >
+                  <div className="contact-avatar">
+                    {contact.profileImage ? (
+                      <img src={getAssetUrl(contact.profileImage)} alt={contact.name || "User"} />
+                    ) : (
+                      <span>{(contact.name || "U").charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
+                  <div>
+                    <strong>{contact.name || "Unknown User"}</strong>
+                    <span>{contact.title || contact.role || contact.email}</span>
+                  </div>
+                </button>
+              );
+            })}
+            {!loadingContacts && contacts.length === 0 ? (
+              <div className="chat-empty small">No contacts found yet.</div>
+            ) : null}
+          </div>
+        </aside>
+
+        <section className="chat-panel">
+          <div className="chat-header">
+            {selectedContact ? (
+              <>
+                <h2>{selectedContact.name || "Chat"}</h2>
+                <p>{selectedContact.title || selectedContact.email || "Direct message"}</p>
+              </>
+            ) : (
+              <>
+                <h2>Select a conversation</h2>
+                <p>Choose a contact to send text, emoji, and photo messages.</p>
+              </>
+            )}
+          </div>
+
+          <div className="chat-body">
+            {loadingMessages ? (
+              <div className="chat-empty">Loading messages...</div>
+            ) : messages.length ? (
+              messages.map(renderMessage)
+            ) : (
+              <div className="chat-empty">
+                {selectedUserId ? "No messages yet. Start the conversation." : "No conversation selected."}
+              </div>
+            )}
+            {typingUsers.length > 0 ? <div className="typing-indicator">Typing...</div> : null}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {imagePreview ? (
+            <div className="image-preview">
+              <img src={imagePreview} alt="Selected upload" />
+              <span>{imageFile?.name}</span>
+              <button type="button" onClick={clearImage}>Remove</button>
+            </div>
+          ) : null}
+
+          <div className="chat-footer">
+            {showEmoji ? (
+              <div className="emoji-picker-wrapper">
+                <EmojiPicker onEmojiClick={(emojiObject) => setInput((prev) => prev + (emojiObject?.emoji || ""))} />
+              </div>
+            ) : null}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden-file"
+              onChange={handleFileChange}
+            />
+            <button type="button" onClick={() => setShowEmoji((prev) => !prev)} className="emoji-btn" disabled={!selectedUserId}>
+              Emoji
+            </button>
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="image-btn" disabled={!selectedUserId}>
+              Photo
+            </button>
+            <input
+              type="text"
+              placeholder={selectedUserId ? "Type a message..." : "Select a contact first"}
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") sendMessage();
+              }}
+              className="message-input"
+              disabled={!selectedUserId || sending}
+            />
+            <button type="button" onClick={sendMessage} className="send-btn" disabled={!selectedUserId || sending || (!input.trim() && !imageFile)}>
+              {sending ? "Sending..." : "Send"}
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   );

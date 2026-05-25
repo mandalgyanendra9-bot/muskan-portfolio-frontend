@@ -105,6 +105,14 @@ function App() {
               }
             />
             <Route
+              path="/messages/:otherId"
+              element={
+                <ProtectedRoute>
+                  <Messages />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/manage-projects"
               element={
                 <ProtectedRoute>
