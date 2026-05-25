@@ -35,7 +35,7 @@ export default function SlotPicker({ expertId, onSelect }) {
         const parsed = rawArray.map((s) => ({
           start: new Date(s.start),
           end: new Date(s.end),
-          displayStart: s.displaySart,
+          displayStart: s.displayStart,
           displayEnd: s.displayEnd,
         }));
         setSlots(parsed);
