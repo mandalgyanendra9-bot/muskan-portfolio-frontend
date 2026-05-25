@@ -20,7 +20,6 @@ const tabs = [
 
 const bookingStatuses = ["pending", "confirmed", "completed", "cancelled"];
 const paymentStatuses = ["unpaid", "paid", "refunded"];
-const payoutStatuses = ["pending", "processed", "rejected"];
 
 const money = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -51,8 +50,10 @@ const getStatusClass = (status) => {
     pending: "bg-amber-500/15 text-amber-300 border-amber-400/20",
     confirmed: "bg-sky-500/15 text-sky-300 border-sky-400/20",
     completed: "bg-emerald-500/15 text-emerald-300 border-emerald-400/20",
+    approved: "bg-sky-500/15 text-sky-300 border-sky-400/20",
     cancelled: "bg-red-500/15 text-red-300 border-red-400/20",
     paid: "bg-emerald-500/15 text-emerald-300 border-emerald-400/20",
+    rejected: "bg-red-500/15 text-red-300 border-red-400/20",
     unpaid: "bg-amber-500/15 text-amber-300 border-amber-400/20",
     refunded: "bg-violet-500/15 text-violet-300 border-violet-400/20",
   };
@@ -95,7 +96,7 @@ const [analyticsRes, usersRes, paymentsRes, reportsRes, bookingsRes, payoutsRes]
   axios.get(`${API_BASE}/admin/payments`, { headers }),
   axios.get(`${API_BASE}/admin/reports`, { headers }),
   axios.get(`${API_BASE}/admin/bookings`, { headers }),
-  axios.get(`${API_BASE}/payouts/pending`, { headers }),
+  axios.get(`${API_BASE}/admin/payouts`, { headers }),
 ]);
 
 setAnalytics(analyticsRes.data);
@@ -169,6 +170,20 @@ setPayouts(payoutsRes.data);
     );
   };
 
+  const handlePayoutUpdate = (payoutId, status) => {
+    const payload = { status };
+    if (status === "paid") {
+      const transactionId = window.prompt("Enter payout transaction/reference ID, if available:");
+      if (transactionId === null) return;
+      payload.transactionId = transactionId;
+    }
+
+    runAdminAction(
+      () => axios.put(`${API_BASE}/admin/payouts/${payoutId}/status`, payload, { headers: getAuthHeaders() }),
+      `Payout marked ${status}`
+    );
+  };
+
   const handleToggleReport = (reportId, isRead) => {
     runAdminAction(
       () => axios.put(`${API_BASE}/admin/report/${reportId}/read`, {}, { headers: getAuthHeaders() }),
@@ -216,6 +231,11 @@ setPayouts(payoutsRes.data);
         payout.amount,
         payout.commission,
         payout.netAmount,
+        payout.payoutMethod,
+        payout.payoutDetails?.upiId,
+        payout.payoutDetails?.accountHolderName,
+        payout.payoutDetails?.bankAccountNumber,
+        payout.payoutDetails?.ifscCode,
         payout.status,
         payout.transactionId,
       ].some((field) => lower(field).includes(query))
@@ -544,6 +564,89 @@ setPayouts(payoutsRes.data);
                       </div>
                       {filteredPayments.length === 0 && <EmptyState text="No payment records found." />}
                     </div>
+                  </div>
+                </section>
+              )}
+
+              {activeTab === "payouts" && (
+                <section className="space-y-6">
+                  <Toolbar title="Payout Management" value={payoutSearch} onChange={setPayoutSearch} placeholder="Search expert, method, status, account..." />
+                  <div className="grid gap-4 md:grid-cols-4">
+                    <MetricCard label="Pending Requests" value={payouts.filter((payout) => payout.status === "pending").length} note="Waiting for review" tone="amber" />
+                    <MetricCard label="Approved" value={payouts.filter((payout) => payout.status === "approved").length} note="Ready to pay" />
+                    <MetricCard label="Paid Out" value={formatMoney(payouts.filter((payout) => payout.status === "paid").reduce((sum, payout) => sum + (Number(payout.amount) || 0), 0))} note="Manual transfers marked paid" tone="emerald" />
+                    <MetricCard label="Rejected" value={payouts.filter((payout) => payout.status === "rejected").length} note="Declined requests" tone="red" />
+                  </div>
+
+                  <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[1120px] text-left text-sm">
+                        <thead className="bg-white/5 text-xs uppercase tracking-wide text-slate-400">
+                          <tr>
+                            <th className="p-4">Expert</th>
+                            <th className="p-4">Amount</th>
+                            <th className="p-4">Wallet Snapshot</th>
+                            <th className="p-4">Payout Details</th>
+                            <th className="p-4">Requested</th>
+                            <th className="p-4">Status</th>
+                            <th className="p-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5 text-slate-300">
+                          {filteredPayouts.map((payout) => {
+                            const details = payout.payoutDetails || {};
+                            return (
+                              <tr key={payout._id} className="hover:bg-white/[0.03]">
+                                <td className="p-4"><UserMini user={payout.expert} /></td>
+                                <td className="p-4">
+                                  <p className="font-bold text-white">{formatMoney(payout.amount || payout.netAmount)}</p>
+                                  <p className="mt-1 text-xs text-slate-500">{payout.platformCommissionPercent || 20}% commission already deducted</p>
+                                </td>
+                                <td className="p-4 text-xs text-slate-400">
+                                  <p>Total earned: <span className="font-bold text-slate-200">{formatMoney(payout.totalEarningsAtRequest || payout.netAmount)}</span></p>
+                                  <p>Available: <span className="font-bold text-slate-200">{formatMoney(payout.availableBalanceAtRequest || payout.amount)}</span></p>
+                                  <p>Paid out: <span className="font-bold text-slate-200">{formatMoney(payout.paidOutAtRequest || 0)}</span></p>
+                                </td>
+                                <td className="p-4 text-xs text-slate-400">
+                                  <p className="font-bold uppercase text-primary-300">{details.payoutMethod || payout.payoutMethod || "upi"}</p>
+                                  <p>{details.accountHolderName || payout.expert?.accountHolderName || "No account holder"}</p>
+                                  {(details.payoutMethod || payout.payoutMethod) === "bank" ? (
+                                    <>
+                                      <p className="font-mono">{details.bankAccountNumber || payout.expert?.bankDetails?.accountNumber || "No account number"}</p>
+                                      <p className="font-mono">{details.ifscCode || payout.expert?.bankDetails?.ifsc || "No IFSC"}</p>
+                                    </>
+                                  ) : (
+                                    <p className="font-mono">{details.upiId || payout.expert?.upiId || "No UPI ID"}</p>
+                                  )}
+                                </td>
+                                <td className="p-4 text-xs text-slate-500">{formatDate(payout.createdAt)}</td>
+                                <td className="p-4"><StatusBadge status={payout.status}>{payout.status}</StatusBadge></td>
+                                <td className="p-4">
+                                  <div className="flex flex-wrap justify-end gap-2">
+                                    {payout.status !== "approved" && payout.status !== "paid" && (
+                                      <ActionButton tone="green" onClick={() => handlePayoutUpdate(payout._id, "approved")}>
+                                        Approve
+                                      </ActionButton>
+                                    )}
+                                    {payout.status !== "paid" && payout.status !== "rejected" && (
+                                      <ActionButton tone="green" onClick={() => handlePayoutUpdate(payout._id, "paid")}>
+                                        Mark Paid
+                                      </ActionButton>
+                                    )}
+                                    {payout.status !== "rejected" && payout.status !== "paid" && (
+                                      <ActionButton tone="red" onClick={() => handlePayoutUpdate(payout._id, "rejected")}>
+                                        Reject
+                                      </ActionButton>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {filteredPayouts.length === 0 && <EmptyState text="No payout requests found." />}
                   </div>
                 </section>
               )}

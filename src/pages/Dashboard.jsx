@@ -7,6 +7,22 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 
+const money = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  maximumFractionDigits: 0,
+});
+
+const formatMoney = (value = 0) => money.format(Number(value) || 0);
+
+const getInitialPayoutForm = (user = {}) => ({
+  upiId: user?.upiId || "",
+  accountHolderName: user?.accountHolderName || "",
+  bankAccountNumber: user?.bankDetails?.accountNumber || "",
+  ifscCode: user?.bankDetails?.ifsc || "",
+  payoutMethod: user?.payoutMethod || "upi",
+});
+
 const Dashboard = () => {
   const { user, updateUser, logout } = useAuth();
   const navigate = useNavigate();
@@ -20,6 +36,10 @@ const Dashboard = () => {
   const [bookings, setBookings] = useState([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [submittingProfile, setSubmittingProfile] = useState(false);
+  const [payoutData, setPayoutData] = useState(null);
+  const [loadingPayout, setLoadingPayout] = useState(false);
+  const [savingPayout, setSavingPayout] = useState(false);
+  const [requestingPayout, setRequestingPayout] = useState(false);
   
   // Invoice states
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -44,6 +64,8 @@ const Dashboard = () => {
     isAvailable: user?.isAvailable !== false,
   });
 
+  const [payoutForm, setPayoutForm] = useState(getInitialPayoutForm(user));
+
   const [selectedFile, setSelectedFile] = useState(null);
 
   // Check if a review needs to be prompted from video call redirect
@@ -54,6 +76,26 @@ const Dashboard = () => {
       navigate(routerLocation.pathname, { replace: true, state: {} });
     }
   }, [routerLocation, navigate]);
+
+  const syncPayoutData = (data) => {
+    setPayoutData(data);
+    setPayoutForm({
+      ...getInitialPayoutForm(user),
+      ...(data?.settings || {}),
+    });
+  };
+
+  const loadPayoutData = async (token) => {
+    setLoadingPayout(true);
+    try {
+      const payoutRes = await axios.get(`${import.meta.env.VITE_API_URL}/api/payouts/me`, {
+        headers: { Authorization: token }
+      });
+      syncPayoutData(payoutRes.data);
+    } finally {
+      setLoadingPayout(false);
+    }
+  };
 
   // Fetch user profile and bookings
   const fetchData = async () => {
@@ -72,6 +114,10 @@ const Dashboard = () => {
         headers: { Authorization: token }
       });
       setBookings(bookingsRes.data);
+
+      if (userRes.data.role === "expert") {
+        await loadPayoutData(token);
+      }
     } catch (err) {
       console.error("Error loading dashboard data:", err);
     } finally {
@@ -117,6 +163,43 @@ const Dashboard = () => {
       toast.error(err.response?.data?.message || "Failed to complete profile");
     } finally {
       setSubmittingProfile(false);
+    }
+  };
+
+  const handleSavePayoutSettings = async (e) => {
+    e.preventDefault();
+    setSavingPayout(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.put(
+        `${import.meta.env.VITE_API_URL}/api/payouts/settings`,
+        payoutForm,
+        { headers: { Authorization: token } }
+      );
+      syncPayoutData(res.data);
+      toast.success("Payout details saved");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to save payout details");
+    } finally {
+      setSavingPayout(false);
+    }
+  };
+
+  const handleRequestPayout = async () => {
+    setRequestingPayout(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/payouts/request`,
+        { amount: payoutData?.wallet?.availableBalance },
+        { headers: { Authorization: token } }
+      );
+      syncPayoutData(res.data);
+      toast.success("Payout request sent to admin");
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to request payout");
+    } finally {
+      setRequestingPayout(false);
     }
   };
 
@@ -209,6 +292,9 @@ const Dashboard = () => {
   const priorityCount = bookings.filter(b => b.isPriority).length;
   const followersCount = user?.followers?.length || 0;
   const subscribersCount = user?.subscribers?.length || 0;
+  const payoutWallet = payoutData?.wallet || {};
+  const payoutRequests = payoutData?.requests || [];
+  const canRequestPayout = (Number(payoutWallet.availableBalance) || 0) > 0 && payoutData?.settingsComplete;
 
   // Filtered Bookings for tabs
   const filteredBookings = bookings.filter(b => {
@@ -466,6 +552,14 @@ const Dashboard = () => {
                   >
                     Professional Settings
                   </button>
+                  <button
+                    onClick={() => setActiveTab("payout-settings")}
+                    className={`pb-2 px-4 font-bold transition-all border-b-2 text-lg ${
+                      activeTab === "payout-settings" ? "border-primary-500 text-white" : "border-transparent text-slate-400"
+                    }`}
+                  >
+                    Payout Settings
+                  </button>
                 </div>
 
                 {/* Tab content 1: Bookings management */}
@@ -676,6 +770,166 @@ const Dashboard = () => {
                       {submittingProfile ? "Saving changes..." : "Save Settings"}
                     </button>
                   </form>
+                )}
+
+                {activeTab === "payout-settings" && (
+                  <div className="space-y-8">
+                    {loadingPayout ? (
+                      <div className="py-20 flex justify-center"><div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div></div>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                          <div className="glass p-6 rounded-[2rem] border-white/5">
+                            <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Total Earnings</span>
+                            <p className="text-2xl font-extrabold text-white mt-3">{formatMoney(payoutWallet.totalEarnings)}</p>
+                          </div>
+                          <div className="glass p-6 rounded-[2rem] border-white/5">
+                            <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Pending Earnings</span>
+                            <p className="text-2xl font-extrabold text-amber-300 mt-3">{formatMoney(payoutWallet.pendingEarnings)}</p>
+                          </div>
+                          <div className="glass p-6 rounded-[2rem] border-white/5">
+                            <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Available Balance</span>
+                            <p className="text-2xl font-extrabold text-emerald-300 mt-3">{formatMoney(payoutWallet.availableBalance)}</p>
+                          </div>
+                          <div className="glass p-6 rounded-[2rem] border-white/5">
+                            <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Paid Out</span>
+                            <p className="text-2xl font-extrabold text-white mt-3">{formatMoney(payoutWallet.paidOut)}</p>
+                          </div>
+                          <div className="glass p-6 rounded-[2rem] border-white/5">
+                            <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Platform Commission %</span>
+                            <p className="text-2xl font-extrabold text-primary-300 mt-3">{payoutWallet.platformCommissionPercent || 20}%</p>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+                          <form onSubmit={handleSavePayoutSettings} className="glass p-8 rounded-[2rem] border-white/5 shadow-xl space-y-6">
+                            <div className="flex flex-col gap-2 border-b border-white/5 pb-4">
+                              <h3 className="text-xl font-bold text-white">Payout Settings</h3>
+                              <p className="text-xs text-slate-500">Manual payouts are reviewed and processed by admin.</p>
+                            </div>
+
+                            <div className="space-y-3">
+                              <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">Payout Method</label>
+                              <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-white/5 p-1">
+                                {["upi", "bank"].map((method) => (
+                                  <button
+                                    type="button"
+                                    key={method}
+                                    onClick={() => setPayoutForm({ ...payoutForm, payoutMethod: method })}
+                                    className={`rounded-lg px-4 py-3 text-sm font-bold uppercase transition ${
+                                      payoutForm.payoutMethod === method ? "bg-primary-500 text-white" : "text-slate-400 hover:bg-white/5 hover:text-white"
+                                    }`}
+                                  >
+                                    {method}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-6">
+                              <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">UPI ID</label>
+                                <input
+                                  type="text"
+                                  placeholder="name@upi"
+                                  className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:border-primary-500 text-white transition-all text-sm"
+                                  value={payoutForm.upiId}
+                                  onChange={(e) => setPayoutForm({ ...payoutForm, upiId: e.target.value })}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">Account Holder Name</label>
+                                <input
+                                  type="text"
+                                  required
+                                  className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:border-primary-500 text-white transition-all text-sm"
+                                  value={payoutForm.accountHolderName}
+                                  onChange={(e) => setPayoutForm({ ...payoutForm, accountHolderName: e.target.value })}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">Bank Account Number</label>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:border-primary-500 text-white transition-all text-sm"
+                                  value={payoutForm.bankAccountNumber}
+                                  onChange={(e) => setPayoutForm({ ...payoutForm, bankAccountNumber: e.target.value })}
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">IFSC Code</label>
+                                <input
+                                  type="text"
+                                  className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:border-primary-500 text-white transition-all text-sm uppercase"
+                                  value={payoutForm.ifscCode}
+                                  onChange={(e) => setPayoutForm({ ...payoutForm, ifscCode: e.target.value.toUpperCase() })}
+                                />
+                              </div>
+                            </div>
+
+                            <button
+                              type="submit"
+                              disabled={savingPayout}
+                              className="w-full py-4 bg-primary-500 hover:bg-primary-600 disabled:bg-slate-700 text-white font-bold rounded-2xl transition-all shadow-xl active:scale-95 text-sm"
+                            >
+                              {savingPayout ? "Saving payout details..." : "Save Payout Details"}
+                            </button>
+                          </form>
+
+                          <div className="space-y-6">
+                            <div className="glass p-8 rounded-[2rem] border-white/5 shadow-xl">
+                              <div className="flex items-start justify-between gap-4">
+                                <div>
+                                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Available Balance</p>
+                                  <p className="mt-2 text-3xl font-extrabold text-white">{formatMoney(payoutWallet.availableBalance)}</p>
+                                </div>
+                                <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                                  payoutData?.settingsComplete ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300"
+                                }`}>
+                                  {payoutData?.settingsComplete ? "Ready" : "Details Needed"}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleRequestPayout}
+                                disabled={!canRequestPayout || requestingPayout}
+                                className="mt-6 w-full py-4 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-700 disabled:text-slate-400 text-white font-bold rounded-2xl transition-all shadow-xl active:scale-95 text-sm"
+                              >
+                                {requestingPayout ? "Requesting payout..." : "Request Payout"}
+                              </button>
+                            </div>
+
+                            <div className="glass p-6 rounded-[2rem] border-white/5 shadow-xl">
+                              <h3 className="text-lg font-bold text-white mb-4">Recent Payout Requests</h3>
+                              <div className="space-y-3">
+                                {payoutRequests.length === 0 ? (
+                                  <p className="text-sm text-slate-500 py-6 text-center">No payout requests yet.</p>
+                                ) : (
+                                  payoutRequests.map((payout) => (
+                                    <div key={payout._id} className="flex items-center justify-between gap-4 rounded-xl border border-white/5 bg-white/5 p-4">
+                                      <div>
+                                        <p className="font-bold text-white">{formatMoney(payout.amount || payout.netAmount)}</p>
+                                        <p className="text-xs text-slate-500">{new Date(payout.createdAt).toLocaleDateString()}</p>
+                                      </div>
+                                      <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${
+                                        payout.status === "paid" ? "bg-emerald-500/15 text-emerald-300" :
+                                        payout.status === "rejected" ? "bg-red-500/15 text-red-300" :
+                                        payout.status === "approved" ? "bg-primary-500/15 text-primary-300" :
+                                        "bg-amber-500/15 text-amber-300"
+                                      }`}>
+                                        {payout.status}
+                                      </span>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
             ) : (
