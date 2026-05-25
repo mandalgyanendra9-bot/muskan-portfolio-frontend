@@ -29,13 +29,15 @@ export default function SlotPicker({ expertId, onSelect }) {
       try {
         setLoading(true);
         const { data } = await axios.get(`/api/slots/${expertId}?date=${date}`);
-        // Ensure we have an array
-        const parsed = Array.isArray(data)
-          ? data.map((s) => ({
-              start: new Date(s.start),
-              end: new Date(s.end),
-            }))
-          : [];
+        const rawArray = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.slots) ? data.slots : [];
+        const parsed = rawArray.map((s) => ({
+          start: new Date(s.start),
+          end: new Date(s.end),
+          displayStart: s.displaySart,
+          displayEnd: s.displayEnd,
+        }));
         setSlots(parsed);
         setError(null);
       } catch (e) {
