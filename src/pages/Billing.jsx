@@ -79,13 +79,24 @@ const Billing = () => {
       );
 
       // 2. Open Razorpay Checkout
+      const razorpayKey = orderData.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID;
+      if (!razorpayKey) {
+        throw new Error("Platform Razorpay key is missing");
+      }
+
       const options = {
-        key: import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_YOUR_KEY",
+        key: razorpayKey,
         amount: orderData.amount,
         currency: orderData.currency,
         name: "Muskan Portfolio Platform",
         description: description,
         order_id: orderData.orderId,
+        method: {
+          upi: true,
+          card: true,
+          netbanking: true,
+          wallet: true,
+        },
         handler: async function (response) {
           try {
             // 3. Verify Payment
@@ -105,6 +116,8 @@ const Billing = () => {
             setAmountInput("");
           } catch (err) {
             toast.error("Payment verification failed");
+          } finally {
+            setProcessing(false);
           }
         },
         prefill: {
@@ -112,16 +125,19 @@ const Billing = () => {
           email: user?.email,
         },
         theme: { color: "#6366f1" },
+        modal: {
+          ondismiss: () => setProcessing(false),
+        },
       };
 
       const rzp = new window.Razorpay(options);
       rzp.on("payment.failed", function (response) {
         toast.error("Payment Failed or Cancelled");
+        setProcessing(false);
       });
       rzp.open();
     } catch (err) {
-      toast.error(err.response?.data?.message || "Failed to initiate payment");
-    } finally {
+      toast.error(err.response?.data?.message || err.message || "Failed to initiate payment");
       setProcessing(false);
     }
   };
@@ -239,14 +255,6 @@ const Billing = () => {
                       Add +
                     </button>
                   </div>
-                  {user?.role === "expert" && (
-                    <button 
-                      onClick={() => setShowWithdraw(true)}
-                      className="w-full border border-white/10 text-slate-300 hover:bg-white/5 font-bold py-2 rounded-xl transition-all"
-                    >
-                      Withdraw Funds
-                    </button>
-                  )}
                 </>
               ) : (
                 <form onSubmit={handleWithdraw} className="space-y-3 bg-black/20 p-4 rounded-xl border border-white/5">
