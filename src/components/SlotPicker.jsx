@@ -3,6 +3,10 @@ import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 
+// API base URL – can be set via Vite env variable VITE_API_BASE_URL
+const API_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? 'https://muskan-portfolio-backend.onrender.com' : 'http://localhost:5000');
+
+
 /**
  * SlotPicker
  * -------
@@ -28,7 +32,7 @@ export default function SlotPicker({ expertId, onSelect }) {
     const fetchSlots = async () => {
       try {
         setLoading(true);
-        const { data } = await axios.get(`/api/slots/${expertId}?date=${date}`);
+        const { data } = await axios.get(`${API_BASE}/api/slots/${expertId}?date=${date}`);
         const rawArray = Array.isArray(data)
           ? data
           : Array.isArray(data?.slots) ? data.slots : [];
