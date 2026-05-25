@@ -76,7 +76,7 @@ const Navbar = () => {
               <Link to="/billing" className="text-sm font-bold text-slate-300 hover:text-primary-400 transition-colors hidden sm:block">
                 Billing
               </Link>
-              {(user?.role === "admin" || user?.email === "mandalgyanu2823297@gmail.com") && (
+              {user?.isAdmin && (
                 <Link to="/admin" className="text-sm font-bold text-red-300 hover:text-red-200 transition-colors hidden lg:block">
                   Admin
                 </Link>

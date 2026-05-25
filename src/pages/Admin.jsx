@@ -14,6 +14,7 @@ const tabs = [
   { id: "profiles", label: "Block/Verify Profiles", short: "PV" },
   { id: "revenue", label: "Revenue Analytics", short: "RA" },
   { id: "payouts", label: "Payout Management", short: "PY" },
+  { id: "settings", label: "Admin Settings", short: "AS" },
   { id: "reports", label: "Reports & Complaints", short: "RC" },
   { id: "bookings", label: "Booking Management", short: "BM" },
 ];
@@ -73,6 +74,7 @@ const Admin = () => {
   const [users, setUsers] = useState([]);
   const [payments, setPayments] = useState([]);
   const [payouts, setPayouts] = useState([]);
+  const [adminSettings, setAdminSettings] = useState({ commissionPercent: 20 });
   const [reports, setReports] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +85,8 @@ const Admin = () => {
   const [payoutSearch, setPayoutSearch] = useState("");
   const [bookingSearch, setBookingSearch] = useState("");
   const [reportSearch, setReportSearch] = useState("");
+  const [commissionPercent, setCommissionPercent] = useState(20);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const fetchData = useCallback(async (showToast = false) => {
     setRefreshing(true);
@@ -90,13 +94,14 @@ const Admin = () => {
       const headers = getAuthHeaders();
 // Remove duplicate state declarations (already defined at top)
 // Fetch payouts along with other admin data
-const [analyticsRes, usersRes, paymentsRes, reportsRes, bookingsRes, payoutsRes] = await Promise.all([
+const [analyticsRes, usersRes, paymentsRes, reportsRes, bookingsRes, payoutsRes, settingsRes] = await Promise.all([
   axios.get(`${API_BASE}/admin/analytics`, { headers }),
   axios.get(`${API_BASE}/admin/users`, { headers }),
   axios.get(`${API_BASE}/admin/payments`, { headers }),
   axios.get(`${API_BASE}/admin/reports`, { headers }),
   axios.get(`${API_BASE}/admin/bookings`, { headers }),
   axios.get(`${API_BASE}/admin/payouts`, { headers }),
+  axios.get(`${API_BASE}/admin/settings`, { headers }),
 ]);
 
 setAnalytics(analyticsRes.data);
@@ -105,6 +110,8 @@ setPayments(paymentsRes.data);
 setReports(reportsRes.data);
 setBookings(bookingsRes.data);
 setPayouts(payoutsRes.data);
+setAdminSettings(settingsRes.data);
+setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
       if (showToast) toast.success("Admin dashboard refreshed");
     } catch (err) {
       console.error(err);
@@ -182,6 +189,26 @@ setPayouts(payoutsRes.data);
       () => axios.put(`${API_BASE}/admin/payouts/${payoutId}/status`, payload, { headers: getAuthHeaders() }),
       `Payout marked ${status}`
     );
+  };
+
+  const handleSaveSettings = async (event) => {
+    event.preventDefault();
+    setSavingSettings(true);
+    try {
+      const res = await axios.put(
+        `${API_BASE}/admin/settings`,
+        { commissionPercent: Number(commissionPercent) },
+        { headers: getAuthHeaders() }
+      );
+      setAdminSettings(res.data.settings);
+      setCommissionPercent(res.data.settings.commissionPercent);
+      toast.success("Admin settings saved");
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to save admin settings");
+    } finally {
+      setSavingSettings(false);
+    }
   };
 
   const handleToggleReport = (reportId, isRead) => {
@@ -268,7 +295,6 @@ setPayouts(payoutsRes.data);
   const metrics = analytics?.metrics || {};
   const pendingExperts = experts.filter((expert) => !expert.isApproved);
   const openReports = reports.filter((report) => !report.isRead);
-  const completedPayments = payments.filter((payment) => payment.status === "completed");
   const revenueFromPaidBookings = payments.reduce((sum, payment) => sum + (Number(payment.totalPrice) || 0), 0);
 
   return (
@@ -301,7 +327,7 @@ setPayouts(payoutsRes.data);
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-2 md:grid-cols-3 xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-2 md:grid-cols-4 xl:grid-cols-7">
             {tabs.map((tab) => (
               <button
                 type="button"
@@ -515,10 +541,10 @@ setPayouts(payoutsRes.data);
               {activeTab === "revenue" && (
                 <section className="space-y-6">
                   <div className="grid gap-4 md:grid-cols-4">
-                    <MetricCard label="Gross Revenue" value={formatMoney(metrics.totalRevenue || revenueFromPaidBookings)} note="Paid bookings" tone="emerald" />
-                    <MetricCard label="Paid Bookings" value={payments.length} note={`${completedPayments.length} completed`} />
-                    <MetricCard label="Average Order" value={formatMoney(payments.length ? revenueFromPaidBookings / payments.length : 0)} note="Across paid bookings" />
-                    <MetricCard label="Refunded" value={metrics.paymentStatusCounts?.refunded || 0} note="Payment records" tone="amber" />
+                    <MetricCard label="Gross Revenue" value={formatMoney(metrics.totalRevenue || revenueFromPaidBookings)} note={`${metrics.totalPaidBookings || payments.length} paid bookings`} tone="emerald" />
+                    <MetricCard label="Platform Commission Earned" value={formatMoney(metrics.platformCommissionEarned || 0)} note={`${metrics.commissionPercent || adminSettings.commissionPercent || 20}% commission`} />
+                    <MetricCard label="Expert Earnings Pending" value={formatMoney(metrics.expertEarningsPending || 0)} note="Not marked paid yet" tone="amber" />
+                    <MetricCard label="Paid Out" value={formatMoney(metrics.paidOut || 0)} note="Manual expert transfers" tone="emerald" />
                   </div>
 
                   <div className="grid gap-6 lg:grid-cols-[0.75fr_1.25fr]">
@@ -539,13 +565,16 @@ setPayouts(payoutsRes.data);
                     <div className="rounded-lg border border-white/10 bg-white/[0.03]">
                       <Toolbar title="Revenue Ledger" value={paymentSearch} onChange={setPaymentSearch} placeholder="Search transactions..." compact />
                       <div className="overflow-x-auto">
-                        <table className="w-full min-w-[780px] text-left text-sm">
+                        <table className="w-full min-w-[980px] text-left text-sm">
                           <thead className="bg-white/5 text-xs uppercase tracking-wide text-slate-400">
                             <tr>
                               <th className="p-4">Client</th>
                               <th className="p-4">Expert</th>
                               <th className="p-4">Payment ID</th>
-                              <th className="p-4">Amount</th>
+                              <th className="p-4">Gross</th>
+                              <th className="p-4">Commission</th>
+                              <th className="p-4">Expert Earning</th>
+                              <th className="p-4">Payout</th>
                               <th className="p-4">Date</th>
                             </tr>
                           </thead>
@@ -555,7 +584,10 @@ setPayouts(payoutsRes.data);
                                 <td className="p-4 font-bold text-white">{payment.client?.name || "Deleted user"}</td>
                                 <td className="p-4">{payment.expert?.name || "Expert"}</td>
                                 <td className="p-4 font-mono text-xs text-primary-300">{payment.paymentId || "demo_payment"}</td>
-                                <td className="p-4 font-bold text-white">{formatMoney(payment.totalPrice)}</td>
+                                <td className="p-4 font-bold text-white">{formatMoney(payment.grossAmount || payment.totalPrice)}</td>
+                                <td className="p-4">{formatMoney(payment.platformCommission ?? ((payment.grossAmount || payment.totalPrice || 0) * (payment.commissionPercent || metrics.commissionPercent || 20) / 100))}</td>
+                                <td className="p-4">{formatMoney(payment.expertEarning ?? ((payment.grossAmount || payment.totalPrice || 0) - ((payment.grossAmount || payment.totalPrice || 0) * (payment.commissionPercent || metrics.commissionPercent || 20) / 100)))}</td>
+                                <td className="p-4"><StatusBadge status={payment.payoutStatus || "pending"}>{payment.payoutStatus || "pending"}</StatusBadge></td>
                                 <td className="p-4 text-xs text-slate-500">{formatDate(payment.createdAt)}</td>
                               </tr>
                             ))}
@@ -648,6 +680,40 @@ setPayouts(payoutsRes.data);
                     </div>
                     {filteredPayouts.length === 0 && <EmptyState text="No payout requests found." />}
                   </div>
+                </section>
+              )}
+
+              {activeTab === "settings" && (
+                <section className="space-y-6">
+                  <div className="flex flex-col gap-2 border-b border-white/10 pb-4">
+                    <h2 className="text-2xl font-bold text-white">Admin Settings</h2>
+                    <p className="text-sm text-slate-400">Set the platform commission applied to future successful booking payments.</p>
+                  </div>
+
+                  <form onSubmit={handleSaveSettings} className="max-w-xl rounded-lg border border-white/10 bg-white/[0.03] p-6">
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Commission Percentage</label>
+                      <div className="flex gap-3">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={commissionPercent}
+                          onChange={(event) => setCommissionPercent(event.target.value)}
+                          className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-primary-400"
+                        />
+                        <button
+                          type="submit"
+                          disabled={savingSettings}
+                          className="rounded-lg bg-primary-500 px-5 py-3 text-sm font-bold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {savingSettings ? "Saving..." : "Save"}
+                        </button>
+                      </div>
+                      <p className="text-xs text-slate-500">Current default is {adminSettings.commissionPercent ?? 20}%.</p>
+                    </div>
+                  </form>
                 </section>
               )}
 
