@@ -1,10 +1,11 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useState } from "react";
 import { Navigate, Routes, Route } from "react-router-dom";
 
 import { NotificationProvider } from "./context/NotificationContext";
 import NotificationToast from "./components/NotificationToast";
 import ProtectedRoute from "./components/ProtectedRoute";
 import PrivacyShield from "./components/PrivacyShield";
+import AgeVerificationGate from "./components/AgeVerificationGate";
 
 const Home = lazy(() => import("./pages/Home"));
 const About = lazy(() => import("./pages/About"));
@@ -30,6 +31,31 @@ const Live = lazy(() => import("./pages/Live"));
 const AIFeatures = lazy(() => import("./pages/AIFeatures"));
 const Security = lazy(() => import("./pages/Security"));
 
+const AGE_VERIFIED_STORAGE_KEY = "ageVerified18Plus";
+const AGE_VERIFIED_COOKIE_KEY = "ageVerified18Plus";
+const UNDERAGE_REDIRECT_URL = "https://www.google.com";
+
+const getCookieValue = (name) => {
+  if (typeof document === "undefined") return null;
+  const cookie = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${name}=`));
+  return cookie ? cookie.split("=")[1] : null;
+};
+
+const hasAgeVerification = () => {
+  if (typeof window === "undefined") return false;
+  const localStorageValue = window.localStorage.getItem(AGE_VERIFIED_STORAGE_KEY);
+  if (localStorageValue === "true") return true;
+  return getCookieValue(AGE_VERIFIED_COOKIE_KEY) === "true";
+};
+
+const persistAgeVerification = () => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(AGE_VERIFIED_STORAGE_KEY, "true");
+  document.cookie = `${AGE_VERIFIED_COOKIE_KEY}=true; Max-Age=31536000; Path=/; SameSite=Lax`;
+};
+
 const PageLoader = () => (
   <div className="min-h-screen bg-surface flex items-center justify-center text-primary-400">
     Loading...
@@ -37,6 +63,26 @@ const PageLoader = () => (
 );
 
 function App() {
+  const [ageVerified, setAgeVerified] = useState(() => hasAgeVerification());
+
+  const handleConfirmAge = () => {
+    persistAgeVerification();
+    setAgeVerified(true);
+  };
+
+  const handleExitForUnderage = () => {
+    window.location.href = UNDERAGE_REDIRECT_URL;
+  };
+
+  if (!ageVerified) {
+    return (
+      <AgeVerificationGate
+        onConfirm={handleConfirmAge}
+        onExit={handleExitForUnderage}
+      />
+    );
+  }
+
   return (
     <NotificationProvider>
       <PrivacyShield />
