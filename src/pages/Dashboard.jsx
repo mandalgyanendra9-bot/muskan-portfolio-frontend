@@ -23,6 +23,28 @@ const getInitialPayoutForm = (user = {}) => ({
   payoutMethod: user?.payoutMethod || "upi",
 });
 
+const getBookingStart = (booking = {}) => booking.slotStart || booking.date || booking.createdAt;
+
+const formatSessionDate = (booking = {}) => {
+  const value = getBookingStart(booking);
+  if (!value) return "Not scheduled";
+  return new Date(value).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+};
+
+const formatSessionDuration = (booking = {}) => {
+  const minutes = Number(booking.duration) || 0;
+  if (!minutes) return "Session";
+  if (minutes < 60) return `${minutes} min session`;
+  const hours = minutes / 60;
+  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hr session`;
+};
+
+const getSessionRate = (booking = {}) => {
+  const minutes = Number(booking.duration) || 0;
+  if (!minutes) return Number(booking.totalPrice) || 0;
+  return Math.round((Number(booking.totalPrice) || 0) / minutes);
+};
+
 const Dashboard = () => {
   const { user, updateUser, logout } = useAuth();
   const navigate = useNavigate();
@@ -37,6 +59,7 @@ const Dashboard = () => {
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [submittingProfile, setSubmittingProfile] = useState(false);
   const [payoutData, setPayoutData] = useState(null);
+  const [referralData, setReferralData] = useState(null);
   const [loadingPayout, setLoadingPayout] = useState(false);
   const [savingPayout, setSavingPayout] = useState(false);
   const [requestingPayout, setRequestingPayout] = useState(false);
@@ -103,15 +126,24 @@ const Dashboard = () => {
       const token = localStorage.getItem("token");
       if (!token) return;
 
-      // 1. Sync User profile state
-      const userRes = await axios.get(`${import.meta.env.VITE_API_URL}/api/profiles/me`, {
-        headers: { Authorization: token }
-      });
-      updateUser(userRes.data);
-
-      // 2. Fetch bookings
-      const bookingsRes = await axios.get(`${import.meta.env.VITE_API_URL}/api/bookings/my-bookings`, {
-        headers: { Authorization: token }
+      const [userRes, bookingsRes, referralRes] = await Promise.all([
+        axios.get(`${import.meta.env.VITE_API_URL}/api/profiles/me`, {
+          headers: { Authorization: token }
+        }),
+        axios.get(`${import.meta.env.VITE_API_URL}/api/bookings/my-bookings`, {
+          headers: { Authorization: token }
+        }),
+        axios.get(`${import.meta.env.VITE_API_URL}/api/referrals/me`, {
+          headers: { Authorization: token }
+        }),
+      ]);
+      setReferralData(referralRes.data);
+      updateUser({
+        ...userRes.data,
+        referralCode: referralRes.data.referralCode,
+        referralCount: referralRes.data.stats?.referralCount,
+        referralRewardCoins: referralRes.data.stats?.referralRewardCoins,
+        coinBalance: referralRes.data.stats?.coinBalance ?? userRes.data.coinBalance,
       });
       setBookings(bookingsRes.data);
 
@@ -280,6 +312,14 @@ const Dashboard = () => {
   // Join Call Helper
   const handleJoinCall = (b) => {
     navigate(`/video-call/${b.meetingLink.split("/").pop()}`, { state: { booking: b } });
+  };
+
+  const handleCopyReferral = async () => {
+    const code = referralData?.referralCode || user?.referralCode;
+    if (!code) return toast.error("Referral code is still loading");
+    const link = `${window.location.origin}/register?ref=${code}`;
+    await navigator.clipboard.writeText(link);
+    toast.success("Referral link copied");
   };
 
   // Calculations for analytics (Expert role)

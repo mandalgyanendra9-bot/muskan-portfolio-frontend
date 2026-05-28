@@ -5,24 +5,39 @@ import PaymentButton from "./PaymentButton";
 import { motion, AnimatePresence } from "framer-motion";
 import toast from "react-hot-toast";
 
+const getDurationMinutes = (expert) => Number(expert?.slotDuration) || 30;
+
+const getRatePerMinute = (expert) => {
+  const directRate = Number(expert?.pricePerMinute) || 0;
+  if (directRate > 0) return directRate;
+  return (Number(expert?.hourlyRate) || 0) / 60;
+};
+
+const getTotalPrice = (expert, durationMinutes) =>
+  Math.max(0, Math.round(getRatePerMinute(expert) * durationMinutes));
+
 const BookingModal = ({ expert, onClose }) => {
   const { user } = useAuth();
+  const initialDuration = getDurationMinutes(expert);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [bookingData, setBookingData] = useState({
     expert: expert._id,
-    duration: expert.slotDuration || 30,
-    totalPrice: expert.pricePerMinute * (expert.slotDuration || 30),
+    duration: initialDuration,
+    totalPrice: getTotalPrice(expert, initialDuration),
     notes: "",
     // date, slotStart, slotEnd will be set after slot selection
   });
 
   const handleSlotSelect = (slot) => {
+    const durationMinutes = Math.max(1, Math.round((slot.end.getTime() - slot.start.getTime()) / 60000));
     setSelectedSlot(slot);
     setBookingData((prev) => ({
       ...prev,
       date: slot.start.toISOString(),
       slotStart: slot.start.toISOString(),
       slotEnd: slot.end.toISOString(),
+      duration: durationMinutes,
+      totalPrice: getTotalPrice(expert, durationMinutes),
     }));
   };
 
@@ -69,6 +84,18 @@ const BookingModal = ({ expert, onClose }) => {
               onChange={(e) => setBookingData({ ...bookingData, notes: e.target.value })}
             />
           </div>
+          {selectedSlot ? (
+            <div className="my-5 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm">
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-slate-400">Session duration</span>
+                <span className="font-bold text-white">{bookingData.duration} minutes</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-4">
+                <span className="text-slate-400">Total payable</span>
+                <span className="font-extrabold text-emerald-300">Rs. {bookingData.totalPrice}</span>
+              </div>
+            </div>
+          ) : null}
           {selectedSlot ? (
             <PaymentButton
               bookingData={bookingData}

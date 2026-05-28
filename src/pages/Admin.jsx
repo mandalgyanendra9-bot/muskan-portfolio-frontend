@@ -87,6 +87,7 @@ const Admin = () => {
   const [reportSearch, setReportSearch] = useState("");
   const [commissionPercent, setCommissionPercent] = useState(20);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [downloadingPayoutReport, setDownloadingPayoutReport] = useState(false);
 
   const fetchData = useCallback(async (showToast = false) => {
     setRefreshing(true);
@@ -208,6 +209,32 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
       toast.error(err.response?.data?.message || "Failed to save admin settings");
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const handleDownloadPayoutReport = async () => {
+    setDownloadingPayoutReport(true);
+    try {
+      const response = await axios.get(`${API_BASE}/admin/payouts/report`, {
+        headers: getAuthHeaders(),
+        responseType: "blob",
+      });
+
+      const blob = new Blob([response.data], { type: "text/csv;charset=utf-8;" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `payout-report-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success("Payout report downloaded");
+    } catch (err) {
+      console.error(err);
+      toast.error(err.response?.data?.message || "Failed to download payout report");
+    } finally {
+      setDownloadingPayoutReport(false);
     }
   };
 
@@ -603,6 +630,16 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
               {activeTab === "payouts" && (
                 <section className="space-y-6">
                   <Toolbar title="Payout Management" value={payoutSearch} onChange={setPayoutSearch} placeholder="Search expert, method, status, account..." />
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleDownloadPayoutReport}
+                      disabled={downloadingPayoutReport}
+                      className="rounded-lg border border-primary-400/20 bg-primary-500/15 px-4 py-2 text-xs font-bold text-primary-200 transition hover:bg-primary-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {downloadingPayoutReport ? "Preparing CSV..." : "Download Payout Report"}
+                    </button>
+                  </div>
                   <div className="grid gap-4 md:grid-cols-4">
                     <MetricCard label="Pending Requests" value={payouts.filter((payout) => payout.status === "pending").length} note="Waiting for review" tone="amber" />
                     <MetricCard label="Approved" value={payouts.filter((payout) => payout.status === "approved").length} note="Ready to pay" />

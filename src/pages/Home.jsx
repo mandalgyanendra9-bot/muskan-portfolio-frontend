@@ -56,6 +56,69 @@ const securityFeatures = [
   "Rate Limiting",
 ];
 
+const powerfulFeatures = [
+  {
+    title: "Live Video Call with Timer",
+    description: "Booked sessions show a live countdown so both sides know exactly how much time is left.",
+    to: "/dashboard",
+    cta: "Open Bookings",
+  },
+  {
+    title: "Auto-Call End",
+    description: "The booking room closes automatically when the reserved time is over.",
+    to: "/dashboard",
+    cta: "See Calls",
+  },
+  {
+    title: "In-App Chat",
+    description: "Private chat keeps booking follow-ups and client support in one place.",
+    to: "/messages",
+    cta: "Open Chat",
+  },
+  {
+    title: "Coins and Gifts",
+    description: "Viewers can send coin gifts during live streams and support creators directly.",
+    to: "/live",
+    cta: "Open Live",
+  },
+  {
+    title: "Referral System",
+    description: "Invite new users, earn coin rewards, and track referral progress from your dashboard.",
+    to: "/dashboard",
+    cta: "See Referrals",
+  },
+  {
+    title: "Subscription Plans",
+    description: "Offer pro and premium plans for priority bookings and exclusive content.",
+    to: "/billing",
+    cta: "View Plans",
+  },
+  {
+    title: "AI Recommendations",
+    description: "Smart matching ranks experts by skills, availability, budget, and fit.",
+    to: "/ai",
+    cta: "Try AI Tools",
+  },
+  {
+    title: "Availability Calendar",
+    description: "Experts publish weekly availability so clients can book the right time slot.",
+    to: "/profile",
+    cta: "Edit Schedule",
+  },
+  {
+    title: "Auto Payout Report",
+    description: "Admins can export payout records as CSV for finance review and reconciliation.",
+    to: "/admin",
+    cta: "Open Admin",
+  },
+  {
+    title: "Revenue Dashboard",
+    description: "Monitor bookings, payouts, revenue, and commission metrics from the admin panel.",
+    to: "/admin",
+    cta: "View Revenue",
+  },
+];
+
 const Home = () => {
   const [projects, setProjects] = useState([]);
   const [experts, setExperts] = useState([]);
@@ -249,6 +312,46 @@ const Home = () => {
             {liveFeatures.map((feature) => (
               <div key={feature} className="glass rounded-[2rem] p-5 border-white/5">
                 <h3 className="text-white font-bold">{feature}</h3>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Powerful Features Section */}
+      <div className="py-24 bg-surface-variant/20 border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-10">
+            <div>
+              <span className="inline-flex px-3 py-1 rounded-full border border-primary-500/30 bg-primary-500/10 text-primary-300 text-xs font-extrabold uppercase tracking-wider">
+                Powerful Features
+              </span>
+              <h2 className="text-4xl font-extrabold text-white mt-4">Everything the platform needs, already wired into the right pages</h2>
+              <p className="text-slate-400 text-lg mt-2 max-w-2xl">
+                The completed parts stay in place. These cards point users to the parts of the product that are already live across the app.
+              </p>
+            </div>
+            <Link to="/dashboard" className="w-full sm:w-auto text-center px-6 py-3 bg-primary-500 hover:bg-primary-600 text-white font-extrabold rounded-2xl transition-all active:scale-95">
+              Open Dashboard
+            </Link>
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-5">
+            {powerfulFeatures.map((feature) => (
+              <div key={feature.title} className="glass rounded-[2rem] p-6 border-white/5 flex flex-col h-full">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-lg font-bold text-white">{feature.title}</h3>
+                  <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300">
+                    Ready
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-relaxed text-slate-400">{feature.description}</p>
+                <Link
+                  to={feature.to}
+                  className="mt-5 inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-xs font-extrabold uppercase tracking-wider text-white transition-all hover:border-primary-500/30 hover:bg-primary-500/10"
+                >
+                  {feature.cta}
+                </Link>
               </div>
             ))}
           </div>

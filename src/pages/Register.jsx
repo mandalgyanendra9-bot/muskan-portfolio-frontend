@@ -1,6 +1,6 @@
 import { useState } from "react";
 import API from "../services/api";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
 import { GoogleLogin } from "@react-oauth/google";
@@ -8,12 +8,18 @@ import { useAuth } from "../context/AuthContext";
 
 const Register = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login } = useAuth();
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [registered, setRegistered] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState("");
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    referralCode: (searchParams.get("ref") || "").toUpperCase(),
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -32,7 +38,10 @@ const Register = () => {
   const handleGoogleSuccess = async (credentialResponse) => {
     setGoogleLoading(true);
     try {
-      const res = await API.post("/auth/google-login", { credential: credentialResponse.credential });
+      const res = await API.post("/auth/google-login", {
+        credential: credentialResponse.credential,
+        referralCode: form.referralCode,
+      });
       localStorage.setItem("token", res.data.token);
       login(res.data.user);
       toast.success("Account created with Google! 🎉");
@@ -121,6 +130,16 @@ const Register = () => {
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-300 ml-1">Password</label>
               <input type="password" placeholder="Min. 6 characters" className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:outline-none focus:border-primary-500 transition-all placeholder-slate-600" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-300 ml-1">Referral Code (Optional)</label>
+              <input
+                type="text"
+                placeholder="Enter referral code"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:outline-none focus:border-primary-500 transition-all placeholder-slate-600 uppercase"
+                value={form.referralCode}
+                onChange={(e) => setForm({ ...form, referralCode: e.target.value.toUpperCase() })}
+              />
             </div>
             <div className="space-y-2">
               <label className="hidden">Account Type</label>
