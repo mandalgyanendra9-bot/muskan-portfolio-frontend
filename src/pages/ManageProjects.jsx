@@ -40,7 +40,11 @@ const ManageProjects = () => {
   };
 
   useEffect(() => {
-    fetchProjects();
+    const timer = window.setTimeout(() => {
+      fetchProjects();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   const handleSubmit = async (e) => {

@@ -1,27 +1,28 @@
-import React, { useEffect } from 'react';
-import './NotificationToast.css';
-import { useNotification } from '../context/NotificationContext';
+import { useEffect } from "react";
+import "./NotificationToast.css";
+import { useNotification } from "../context/NotificationContext";
 
 const NotificationToast = () => {
   const { notifications, removeNotification } = useNotification();
 
-  // Auto‑dismiss each toast after 5 seconds (context already does this, but keep for safety)
   useEffect(() => {
-    if (!notifications.length) return;
-    const timer = setTimeout(() => {
-      // Remove the oldest notification (or all) – here we clear all for simplicity
-      notifications.forEach((n) => removeNotification(n.id));
+    if (!notifications.length) return undefined;
+
+    const timer = window.setTimeout(() => {
+      notifications.forEach((notification) => removeNotification(notification.id));
     }, 5000);
-    return () => clearTimeout(timer);
+
+    return () => window.clearTimeout(timer);
   }, [notifications, removeNotification]);
 
   if (!notifications.length) return null;
+
   return (
     <div className="notification-toast-wrapper">
-      {notifications.map((n) => (
-        <div key={n.id} className="notification-toast">
-          <strong>{n.title}</strong>
-          <p>{n.message}</p>
+      {notifications.map((notification) => (
+        <div key={notification.id} className="notification-toast">
+          <strong>{notification.title}</strong>
+          <p>{notification.message}</p>
         </div>
       ))}
     </div>

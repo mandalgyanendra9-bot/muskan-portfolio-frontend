@@ -3,7 +3,6 @@ import { useAuth } from "../context/AuthContext";
 import SlotPicker from "./SlotPicker";
 import PaymentButton from "./PaymentButton";
 import { motion, AnimatePresence } from "framer-motion";
-import toast from "react-hot-toast";
 
 const getDurationMinutes = (expert) => Number(expert?.slotDuration) || 30;
 

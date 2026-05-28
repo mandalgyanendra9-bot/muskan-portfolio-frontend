@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
 import { ZegoUIKitPrebuilt } from "@zegocloud/zego-uikit-prebuilt";
@@ -54,30 +54,32 @@ const Live = () => {
     token ? { Authorization: token } : {}
   ), [token]);
 
-  const fetchLiveData = async () => {
-    try {
-      const [streamsRes, giftsRes] = await Promise.all([
-        axios.get(`${API_URL}/api/live/active`),
-        axios.get(`${API_URL}/api/live/gifts/catalog`),
-      ]);
-      setStreams(streamsRes.data);
-      setGiftCatalog(giftsRes.data);
-      setSelectedStream((current) => {
-        if (current) {
-          return streamsRes.data.find((stream) => stream._id === current._id) || current;
-        }
-        return streamsRes.data.find((stream) => stream._id === requestedStreamId) || streamsRes.data[0] || null;
-      });
-    } catch (error) {
-      toast.error("Failed to load live streams");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchLiveData();
-  }, []);
+    const timer = window.setTimeout(() => {
+      (async () => {
+        try {
+          const [streamsRes, giftsRes] = await Promise.all([
+            axios.get(`${API_URL}/api/live/active`),
+            axios.get(`${API_URL}/api/live/gifts/catalog`),
+          ]);
+          setStreams(streamsRes.data);
+          setGiftCatalog(giftsRes.data);
+          setSelectedStream((current) => {
+            if (current) {
+              return streamsRes.data.find((stream) => stream._id === current._id) || current;
+            }
+            return streamsRes.data.find((stream) => stream._id === requestedStreamId) || streamsRes.data[0] || null;
+          });
+        } catch {
+          toast.error("Failed to load live streams");
+        } finally {
+          setLoading(false);
+        }
+      })();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [requestedStreamId]);
 
   useEffect(() => {
     const socket = io(SOCKET_URL, {
@@ -133,7 +135,28 @@ const Live = () => {
       socket.off("live:gift", handleGift);
       socket.off("live:ended", handleEnded);
     };
-  }, [selectedStream?._id, selectedStream?.roomId]);
+  }, [
+    selectedStream?._id,
+    selectedStream?.roomId,
+    selectedStream?.chatMessages,
+    selectedStream?.gifts,
+    selectedStream?.viewerCount,
+  ]);
+
+  const handleEndLive = useCallback(async () => {
+    if (!selectedStream || !isHost) return;
+    setEnding(true);
+    try {
+      await axios.put(`${API_URL}/api/live/${selectedStream._id}/end`, {}, { headers });
+      setStreams((current) => current.filter((item) => item._id !== selectedStream._id));
+      setSelectedStream(null);
+      toast.success("Live stream ended");
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to end live");
+    } finally {
+      setEnding(false);
+    }
+  }, [selectedStream, isHost, headers]);
 
   useEffect(() => {
     if (!selectedStream?.roomId || !liveContainerRef.current) return undefined;
@@ -197,7 +220,7 @@ const Live = () => {
         zegoRef.current = null;
       }
     };
-  }, [selectedStream?._id, isHost, user?._id]);
+  }, [selectedStream?._id, selectedStream?.roomId, isHost, user?._id, user?.name, handleEndLive]);
 
   const handleStartLive = async (event) => {
     event.preventDefault();
@@ -215,21 +238,6 @@ const Live = () => {
       toast.error(error.response?.data?.message || "Failed to start live");
     } finally {
       setStarting(false);
-    }
-  };
-
-  const handleEndLive = async () => {
-    if (!selectedStream || !isHost) return;
-    setEnding(true);
-    try {
-      await axios.put(`${API_URL}/api/live/${selectedStream._id}/end`, {}, { headers });
-      setStreams((current) => current.filter((item) => item._id !== selectedStream._id));
-      setSelectedStream(null);
-      toast.success("Live stream ended");
-    } catch (error) {
-      toast.error(error.response?.data?.message || "Failed to end live");
-    } finally {
-      setEnding(false);
     }
   };
 

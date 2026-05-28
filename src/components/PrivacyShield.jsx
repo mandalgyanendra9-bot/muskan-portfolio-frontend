@@ -21,7 +21,6 @@ const PrivacyShield = () => {
   useEffect(() => {
     document.body.classList.toggle("security-privacy-mode", active);
     if (!active) {
-      setShowOverlay(false);
       return undefined;
     }
 

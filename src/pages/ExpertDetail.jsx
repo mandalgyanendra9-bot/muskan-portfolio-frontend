@@ -21,27 +21,29 @@ const ExpertDetail = () => {
   const [loading, setLoading] = useState(true);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
 
-  const fetchExpertAndData = async () => {
-    try {
-      const [expertRes, projectsRes, reviewsRes] = await Promise.all([
-        axios.get(`${import.meta.env.VITE_API_URL}/api/profiles/expert/${id}`),
-        axios.get(`${import.meta.env.VITE_API_URL}/api/projects/user/${id}`),
-        axios.get(`${import.meta.env.VITE_API_URL}/api/reviews/expert/${id}`)
-      ]);
-      
-      setExpert(expertRes.data);
-      setProjects(projectsRes.data);
-      setReviews(reviewsRes.data);
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to load expert details");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchExpertAndData();
+    const timer = window.setTimeout(() => {
+      (async () => {
+        try {
+          const [expertRes, projectsRes, reviewsRes] = await Promise.all([
+            axios.get(`${import.meta.env.VITE_API_URL}/api/profiles/expert/${id}`),
+            axios.get(`${import.meta.env.VITE_API_URL}/api/projects/user/${id}`),
+            axios.get(`${import.meta.env.VITE_API_URL}/api/reviews/expert/${id}`)
+          ]);
+
+          setExpert(expertRes.data);
+          setProjects(projectsRes.data);
+          setReviews(reviewsRes.data);
+        } catch (err) {
+          console.error(err);
+          toast.error("Failed to load expert details");
+        } finally {
+          setLoading(false);
+        }
+      })();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [id]);
 
   const handleBookingClick = () => {
@@ -69,7 +71,7 @@ const ExpertDetail = () => {
       );
       updateUser(res.data);
       toast.success(isFavorited ? "Removed from favorites" : "Added to favorites!");
-    } catch (err) {
+    } catch {
       toast.error("Failed to update favorites");
     }
   };

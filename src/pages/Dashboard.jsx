@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
@@ -23,28 +23,6 @@ const getInitialPayoutForm = (user = {}) => ({
   payoutMethod: user?.payoutMethod || "upi",
 });
 
-const getBookingStart = (booking = {}) => booking.slotStart || booking.date || booking.createdAt;
-
-const formatSessionDate = (booking = {}) => {
-  const value = getBookingStart(booking);
-  if (!value) return "Not scheduled";
-  return new Date(value).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
-};
-
-const formatSessionDuration = (booking = {}) => {
-  const minutes = Number(booking.duration) || 0;
-  if (!minutes) return "Session";
-  if (minutes < 60) return `${minutes} min session`;
-  const hours = minutes / 60;
-  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)} hr session`;
-};
-
-const getSessionRate = (booking = {}) => {
-  const minutes = Number(booking.duration) || 0;
-  if (!minutes) return Number(booking.totalPrice) || 0;
-  return Math.round((Number(booking.totalPrice) || 0) / minutes);
-};
-
 const Dashboard = () => {
   const { user, updateUser, logout } = useAuth();
   const navigate = useNavigate();
@@ -59,7 +37,6 @@ const Dashboard = () => {
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [submittingProfile, setSubmittingProfile] = useState(false);
   const [payoutData, setPayoutData] = useState(null);
-  const [referralData, setReferralData] = useState(null);
   const [loadingPayout, setLoadingPayout] = useState(false);
   const [savingPayout, setSavingPayout] = useState(false);
   const [requestingPayout, setRequestingPayout] = useState(false);
@@ -94,34 +71,24 @@ const Dashboard = () => {
   // Check if a review needs to be prompted from video call redirect
   useEffect(() => {
     if (routerLocation.state?.reviewBooking) {
-      setReviewBooking(routerLocation.state.reviewBooking);
-      // Clear navigation state to avoid duplicate prompts
-      navigate(routerLocation.pathname, { replace: true, state: {} });
+      const timer = window.setTimeout(() => {
+        setReviewBooking(routerLocation.state.reviewBooking);
+        navigate(routerLocation.pathname, { replace: true, state: {} });
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
   }, [routerLocation, navigate]);
 
-  const syncPayoutData = (data) => {
+  const syncPayoutData = useCallback((data) => {
     setPayoutData(data);
     setPayoutForm({
       ...getInitialPayoutForm(user),
       ...(data?.settings || {}),
     });
-  };
-
-  const loadPayoutData = async (token) => {
-    setLoadingPayout(true);
-    try {
-      const payoutRes = await axios.get(`${import.meta.env.VITE_API_URL}/api/payouts/me`, {
-        headers: { Authorization: token }
-      });
-      syncPayoutData(payoutRes.data);
-    } finally {
-      setLoadingPayout(false);
-    }
-  };
+  }, [user]);
 
   // Fetch user profile and bookings
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
@@ -137,7 +104,6 @@ const Dashboard = () => {
           headers: { Authorization: token }
         }),
       ]);
-      setReferralData(referralRes.data);
       updateUser({
         ...userRes.data,
         referralCode: referralRes.data.referralCode,
@@ -148,18 +114,29 @@ const Dashboard = () => {
       setBookings(bookingsRes.data);
 
       if (userRes.data.role === "expert") {
-        await loadPayoutData(token);
+        setLoadingPayout(true);
+        try {
+          const payoutRes = await axios.get(`${import.meta.env.VITE_API_URL}/api/payouts/me`, {
+            headers: { Authorization: token }
+          });
+          syncPayoutData(payoutRes.data);
+        } finally {
+          setLoadingPayout(false);
+        }
       }
     } catch (err) {
       console.error("Error loading dashboard data:", err);
     } finally {
       setLoadingBookings(false);
     }
-  };
+  }, [syncPayoutData, updateUser]);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    const timer = window.setTimeout(() => {
+      fetchData();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchData]);
 
   // Profile Completion Wizard Submit
   const handleProfileSubmit = async (e) => {
@@ -246,7 +223,7 @@ const Dashboard = () => {
       );
       updateUser(res.data);
       toast.success(`Availability toggled: ${!user.isAvailable ? 'Available' : 'Unavailable'}`);
-    } catch (err) {
+    } catch {
       toast.error("Failed to toggle availability");
     }
   };
@@ -262,7 +239,7 @@ const Dashboard = () => {
       );
       toast.success(`Booking status updated to ${newStatus}`);
       fetchData();
-    } catch (err) {
+    } catch {
       toast.error("Failed to update status");
     }
   };
@@ -304,7 +281,7 @@ const Dashboard = () => {
       );
       updateUser(res.data);
       toast.success("Favorites updated!");
-    } catch (err) {
+    } catch {
       toast.error("Failed to update favorites");
     }
   };
@@ -312,14 +289,6 @@ const Dashboard = () => {
   // Join Call Helper
   const handleJoinCall = (b) => {
     navigate(`/video-call/${b.meetingLink.split("/").pop()}`, { state: { booking: b } });
-  };
-
-  const handleCopyReferral = async () => {
-    const code = referralData?.referralCode || user?.referralCode;
-    if (!code) return toast.error("Referral code is still loading");
-    const link = `${window.location.origin}/register?ref=${code}`;
-    await navigator.clipboard.writeText(link);
-    toast.success("Referral link copied");
   };
 
   // Calculations for analytics (Expert role)

@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 /**
  * TimePicker - 12 hour format selector
  * Props:

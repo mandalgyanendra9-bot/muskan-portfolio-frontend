@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import axios from "axios";
@@ -18,8 +19,6 @@ export const ChatProvider = ({ children }) => {
 
   useEffect(() => {
     if (!user?._id || !API_URL) {
-      setSocket(null);
-      setUnreadCount(0);
       return undefined;
     }
 
@@ -30,7 +29,9 @@ export const ChatProvider = ({ children }) => {
       transports: ["websocket", "polling"],
     });
 
-    setSocket(newSocket);
+    const socketInitTimer = window.setTimeout(() => {
+      setSocket(newSocket);
+    }, 0);
     newSocket.emit("join", user._id);
 
     axios
@@ -49,6 +50,7 @@ export const ChatProvider = ({ children }) => {
     });
 
     return () => {
+      window.clearTimeout(socketInitTimer);
       newSocket.disconnect();
       setSocket(null);
     };

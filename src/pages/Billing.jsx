@@ -44,26 +44,30 @@ const Billing = () => {
   const subscribersCount = user?.subscribers?.length || 0;
   const isPremium = user?.subscriptionPlan === "premium";
 
-  useEffect(() => {
-    fetchHistory();
-    // Load Razorpay script
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    document.body.appendChild(script);
-  }, []);
-
   const fetchHistory = async () => {
     try {
       const token = localStorage.getItem("token");
       const res = await API.get("/payments/history", { headers: { Authorization: token } });
       setHistory(res.data);
-    } catch (err) {
+    } catch {
       toast.error("Failed to load payment history");
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      fetchHistory();
+    }, 0);
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    document.body.appendChild(script);
+
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const handleRazorpayPayment = async (amount, type, description) => {
     if (!amount || amount <= 0) return toast.error("Invalid amount");
@@ -115,7 +119,7 @@ const Billing = () => {
             toast.success("Payment Successful! 🎉");
             fetchHistory();
             setAmountInput("");
-          } catch (err) {
+          } catch {
             toast.error("Payment verification failed");
           } finally {
             setProcessing(false);
@@ -132,7 +136,7 @@ const Billing = () => {
       };
 
       const rzp = new window.Razorpay(options);
-      rzp.on("payment.failed", function (response) {
+      rzp.on("payment.failed", function () {
         toast.error("Payment Failed or Cancelled");
         setProcessing(false);
       });

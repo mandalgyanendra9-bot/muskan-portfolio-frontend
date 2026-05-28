@@ -66,18 +66,30 @@ const Profile = () => {
   });
 
   useEffect(() => {
-    if (!user) { navigate("/login"); return; }
-    if (activeTab === "reviews") fetchReviews();
-  }, [activeTab, user]);
+    if (!user) {
+      navigate("/login");
+      return;
+    }
 
-  const fetchReviews = async () => {
-    setLoadingReviews(true);
-    try {
-      const token = localStorage.getItem("token");
-      const res = await API.get("/reviews/mine", { headers: { Authorization: token } });
-      setReviews(res.data);
-    } catch { setReviews([]); } finally { setLoadingReviews(false); }
-  };
+    if (activeTab !== "reviews") return;
+
+    const timer = window.setTimeout(() => {
+      (async () => {
+        setLoadingReviews(true);
+        try {
+          const token = localStorage.getItem("token");
+          const res = await API.get("/reviews/mine", { headers: { Authorization: token } });
+          setReviews(res.data);
+        } catch {
+          setReviews([]);
+        } finally {
+          setLoadingReviews(false);
+        }
+      })();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [activeTab, user, navigate]);
 
   const handleImageDrop = (e) => {
     e.preventDefault(); setDragOver(false);

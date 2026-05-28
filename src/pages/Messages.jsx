@@ -33,7 +33,6 @@ const MessagesContent = () => {
   const currentUserId = user?._id;
 
   const [contacts, setContacts] = useState([]);
-  const [selectedUserId, setSelectedUserId] = useState(otherId || "");
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -46,6 +45,7 @@ const MessagesContent = () => {
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const selectedUserId = otherId || contacts[0]?._id || "";
 
   const selectedContact = useMemo(
     () => contacts.find((contact) => idOf(contact._id) === selectedUserId),
@@ -60,18 +60,11 @@ const MessagesContent = () => {
   };
 
   useEffect(() => {
-    if (otherId) setSelectedUserId(otherId);
-  }, [otherId]);
-
-  useEffect(() => {
     const fetchContacts = async () => {
       setLoadingContacts(true);
       try {
         const res = await API.get("/chat/contacts", { headers: getAuthHeaders() });
         setContacts(res.data || []);
-        if (!selectedUserId && res.data?.[0]?._id) {
-          setSelectedUserId(idOf(res.data[0]._id));
-        }
       } catch (error) {
         console.error("Failed to fetch contacts", error);
       } finally {
@@ -177,7 +170,6 @@ const MessagesContent = () => {
   }, [input, socket, currentUserId, selectedUserId]);
 
   const handleSelectContact = (contactId) => {
-    setSelectedUserId(contactId);
     navigate(`/messages/${contactId}`, { replace: false });
   };
 
