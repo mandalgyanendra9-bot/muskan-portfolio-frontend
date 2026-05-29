@@ -6,7 +6,8 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 
-const API_BASE = `${import.meta.env.VITE_API_URL || "http://localhost:5000"}/api`;
+const API_ROOT = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_BASE = `${API_ROOT}/api`;
 
 const tabs = [
   { id: "overview", label: "Dashboard", short: "DB" },
@@ -41,6 +42,36 @@ const formatDate = (value) => {
 
 const lower = (value) => String(value || "").toLowerCase();
 
+const capitalize = (value) => {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
+
+const getAvatarUrl = (user = {}) => {
+  const candidate = user.profileImageUrl || user.profilePhotoUrl || user.profilePhoto || user.profileImage || "";
+  if (!candidate) return "";
+  if (/^https?:\/\//i.test(candidate)) return candidate;
+  return `${API_ROOT}${candidate.startsWith("/") ? candidate : `/${candidate}`}`;
+};
+
+const getRoleKey = (user = {}) => {
+  if (user?.isSuperAdmin || lower(user?.role) === "admin") return "admin";
+  if (lower(user?.role) === "expert" || lower(user?.role) === "faculty") return "expert";
+  return lower(user?.role) || "client";
+};
+
+const getRoleLabel = (user = {}) => user?.displayRole || (getRoleKey(user) === "admin" ? "Super Admin" : getRoleKey(user) === "expert" ? "Faculty" : capitalize(user?.role));
+
+const splitList = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (!value) return [];
+  return String(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
 const getAuthHeaders = () => {
   const token = localStorage.getItem("token");
   return { Authorization: token };
@@ -57,6 +88,10 @@ const getStatusClass = (status) => {
     rejected: "bg-red-500/15 text-red-300 border-red-400/20",
     unpaid: "bg-amber-500/15 text-amber-300 border-amber-400/20",
     refunded: "bg-violet-500/15 text-violet-300 border-violet-400/20",
+    admin: "bg-violet-500/15 text-violet-300 border-violet-400/20",
+    expert: "bg-sky-500/15 text-sky-300 border-sky-400/20",
+    faculty: "bg-sky-500/15 text-sky-300 border-sky-400/20",
+    client: "bg-slate-500/15 text-slate-300 border-slate-400/20",
   };
 
   return classes[status] || "bg-slate-500/15 text-slate-300 border-slate-400/20";
@@ -79,6 +114,9 @@ const Admin = () => {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedUserProfile, setSelectedUserProfile] = useState(null);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
 
   const [userSearch, setUserSearch] = useState("");
   const [paymentSearch, setPaymentSearch] = useState("");
@@ -88,6 +126,7 @@ const Admin = () => {
   const [commissionPercent, setCommissionPercent] = useState(20);
   const [savingSettings, setSavingSettings] = useState(false);
   const [downloadingPayoutReport, setDownloadingPayoutReport] = useState(false);
+  const [roleDrafts, setRoleDrafts] = useState({});
 
   const fetchData = useCallback(async (showToast = false) => {
     setRefreshing(true);
@@ -139,6 +178,50 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
     } catch (err) {
       console.error(err);
       toast.error(err.response?.data?.message || "Admin action failed");
+    }
+  };
+
+  const handleViewProfile = async (user) => {
+    setProfileModalOpen(true);
+    setProfileLoading(true);
+    setSelectedUserProfile(user);
+
+    try {
+      const { data } = await axios.get(`${API_BASE}/admin/users/${user._id}`, { headers: getAuthHeaders() });
+      setSelectedUserProfile(data);
+      setRoleDrafts((current) => ({
+        ...current,
+        [data._id]: current[data._id] || data.role,
+      }));
+    } catch (err) {
+      console.error(err);
+      toast.error(err.response?.data?.message || "Failed to load profile details");
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const closeProfileModal = () => {
+    setProfileModalOpen(false);
+    setSelectedUserProfile(null);
+    setProfileLoading(false);
+  };
+
+  const handleRoleChange = async (userId) => {
+    const nextRole = roleDrafts[userId];
+    if (!nextRole) return;
+
+    try {
+      const { data } = await axios.put(`${API_BASE}/admin/user/${userId}/role`, { role: nextRole }, { headers: getAuthHeaders() });
+      toast.success(data.message || "Role updated");
+      setRoleDrafts((current) => ({ ...current, [userId]: data.user?.role || nextRole }));
+      if (selectedUserProfile?._id === userId) {
+        setSelectedUserProfile(data.user || null);
+      }
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      toast.error(err.response?.data?.message || "Failed to update role");
     }
   };
 
@@ -253,12 +336,12 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
     );
   };
 
-  const experts = useMemo(() => users.filter((user) => user.role === "expert"), [users]);
+  const experts = useMemo(() => users.filter((user) => ["expert", "faculty"].includes(lower(user.role))), [users]);
 
   const filteredUsers = useMemo(() => {
     const query = lower(userSearch);
     return users.filter((user) =>
-      [user.name, user.email, user.role, user.isBlocked ? "blocked" : "active", user.isEmailVerified ? "verified" : "unverified"]
+      [user.name, user.email, user.role, user.displayRole, user.isBlocked ? "blocked" : "active", user.isEmailVerified ? "verified" : "unverified"]
         .some((field) => lower(field).includes(query))
     );
   }, [users, userSearch]);
@@ -323,6 +406,14 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
   const pendingExperts = experts.filter((expert) => !expert.isApproved);
   const openReports = reports.filter((report) => !report.isRead);
   const revenueFromPaidBookings = payments.reduce((sum, payment) => sum + (Number(payment.totalPrice) || 0), 0);
+  const profileData = selectedUserProfile || {};
+  const profileAvatar = getAvatarUrl(profileData);
+  const profileResearchInterests = splitList(profileData.researchInterests);
+  const profileCounts = {
+    publications: Number(profileData.publicationsCount) || 0,
+    projects: Number(profileData.projectsCount) || 0,
+    patents: Number(profileData.patentsCount) || 0,
+  };
 
   return (
     <div className="min-h-screen bg-surface flex flex-col">
@@ -463,9 +554,10 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
                   <Toolbar title="Manage Users" value={userSearch} onChange={setUserSearch} placeholder="Search name, email, role, status..." />
                   <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
                     <div className="overflow-x-auto">
-                      <table className="w-full min-w-[900px] text-left text-sm">
+                      <table className="w-full min-w-[1180px] text-left text-sm">
                         <thead className="bg-white/5 text-xs uppercase tracking-wide text-slate-400">
                           <tr>
+                            <th className="p-4">Avatar</th>
                             <th className="p-4">User</th>
                             <th className="p-4">Role</th>
                             <th className="p-4">Verification</th>
@@ -477,8 +569,18 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
                         <tbody className="divide-y divide-white/5 text-slate-300">
                           {filteredUsers.map((user) => (
                             <tr key={user._id} className="hover:bg-white/[0.03]">
-                              <td className="p-4"><UserMini user={user} /></td>
-                              <td className="p-4 capitalize"><StatusBadge status={user.role}>{user.role}</StatusBadge></td>
+                              <td className="p-4 align-top">
+                                <UserAvatar user={user} />
+                              </td>
+                              <td className="p-4 align-top">
+                                <div className="min-w-0">
+                                  <p className="font-bold text-white">{user.name || "Unknown user"}</p>
+                                  <p className="mt-1 truncate text-xs text-slate-500">{user.email || "No email"}</p>
+                                </div>
+                              </td>
+                              <td className="p-4 align-top">
+                                <StatusBadge status={getRoleKey(user)}>{getRoleLabel(user)}</StatusBadge>
+                              </td>
                               <td className="p-4">
                                 <StatusBadge status={user.isEmailVerified ? "paid" : "pending"}>
                                   {user.isEmailVerified ? "Verified" : "Unverified"}
@@ -491,20 +593,52 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
                               </td>
                               <td className="p-4 text-xs text-slate-500">{formatDate(user.createdAt)}</td>
                               <td className="p-4">
-                                <div className="flex flex-wrap justify-end gap-2">
-                                  <ActionButton onClick={() => handleToggleVerify(user._id, user.isEmailVerified)}>
-                                    {user.isEmailVerified ? "Unverify" : "Verify"}
-                                  </ActionButton>
-                                  {user.role !== "admin" && (
-                                    <>
-                                      <ActionButton tone={user.isBlocked ? "green" : "amber"} onClick={() => handleToggleBlock(user._id, user.isBlocked)}>
-                                        {user.isBlocked ? "Unblock" : "Block"}
-                                      </ActionButton>
-                                      <ActionButton tone="red" onClick={() => handleDeleteUser(user._id)}>
-                                        Delete
-                                      </ActionButton>
-                                    </>
-                                  )}
+                                <div className="flex flex-col gap-3">
+                                  <div className="flex flex-wrap justify-end gap-2">
+                                    <ActionButton onClick={() => handleViewProfile(user)}>
+                                      View Profile
+                                    </ActionButton>
+                                    <ActionButton onClick={() => handleToggleVerify(user._id, user.isEmailVerified)}>
+                                      {user.isEmailVerified ? "Unverify" : "Verify"}
+                                    </ActionButton>
+                                    {getRoleKey(user) !== "admin" && (
+                                      <>
+                                        <ActionButton tone={user.isBlocked ? "green" : "amber"} onClick={() => handleToggleBlock(user._id, user.isBlocked)}>
+                                          {user.isBlocked ? "Unblock" : "Block"}
+                                        </ActionButton>
+                                        <ActionButton tone="red" onClick={() => handleDeleteUser(user._id)}>
+                                          Delete
+                                        </ActionButton>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                      <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Assign Role</p>
+                                      <span className="text-[10px] text-slate-600">Separate from displayed role</span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <select
+                                        value={roleDrafts[user._id] ?? user.role}
+                                        onChange={(event) => setRoleDrafts((current) => ({ ...current, [user._id]: event.target.value }))}
+                                        disabled={getRoleKey(user) === "admin"}
+                                        className="min-w-0 flex-1 rounded-md border border-white/10 bg-slate-900 px-3 py-2 text-xs font-bold capitalize text-white outline-none transition focus:border-primary-400 disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        <option value="client">Client</option>
+                                        <option value="expert">Faculty</option>
+                                        <option value="admin">Super Admin</option>
+                                      </select>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRoleChange(user._id)}
+                                        disabled={getRoleKey(user) === "admin"}
+                                        className="rounded-md border border-primary-400/20 bg-primary-500/15 px-3 py-2 text-xs font-bold text-primary-200 transition hover:bg-primary-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                                      >
+                                        Assign
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
                               </td>
                             </tr>
@@ -850,6 +984,103 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
           )}
         </div>
       </main>
+
+      {profileModalOpen && (
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/80 px-4 py-8 backdrop-blur-sm">
+          <div className="relative w-full max-w-5xl overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950 shadow-2xl">
+            <div className="absolute left-0 top-0 h-2 w-full bg-gradient-to-r from-primary-500 via-violet-500 to-emerald-400" />
+            <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-slate-500">Profile Details</p>
+                <h2 className="mt-1 text-2xl font-extrabold text-white">Faculty / User Profile</h2>
+              </div>
+              <button
+                type="button"
+                onClick={closeProfileModal}
+                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="max-h-[80vh] overflow-y-auto p-6">
+              {profileLoading ? (
+                <div className="flex min-h-80 items-center justify-center">
+                  <div className="h-12 w-12 rounded-full border-4 border-primary-500 border-t-transparent animate-spin" />
+                </div>
+              ) : (
+                <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+                  <aside className="space-y-5">
+                    <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.03] p-6 text-center">
+                      <div className="mx-auto flex h-40 w-40 items-center justify-center overflow-hidden rounded-full border-4 border-white/10 bg-white/5">
+                        {profileAvatar ? (
+                          <img src={profileAvatar} alt={profileData.name || "User"} className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-4xl font-extrabold text-primary-300">
+                            {(profileData.name || "U").charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="mt-5 text-2xl font-extrabold text-white">{profileData.name || "Unknown User"}</h3>
+                      <p className="mt-1 text-sm text-slate-400">{profileData.email || "No email"}</p>
+                      <div className="mt-4 flex justify-center">
+                        <StatusBadge status={getRoleKey(profileData)}>{getRoleLabel(profileData)}</StatusBadge>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+                      <MetricCard label="Publications" value={profileCounts.publications} note="User profile count" />
+                      <MetricCard label="Projects" value={profileCounts.projects} note="Linked portfolio works" />
+                      <MetricCard label="Patents" value={profileCounts.patents} note="Recorded patent count" />
+                    </div>
+                  </aside>
+
+                  <section className="space-y-6">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <InfoCard label="Department" value={profileData.department || "Not set"} />
+                      <InfoCard label="Designation" value={profileData.designation || "Not set"} />
+                      <InfoCard label="Qualification" value={profileData.qualification || "Not set"} />
+                      <InfoCard label="Role" value={getRoleLabel(profileData)} />
+                    </div>
+
+                    <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5">
+                      <p className="text-xs font-bold uppercase tracking-[0.25em] text-slate-500">Research Interests</p>
+                      {profileResearchInterests.length ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {profileResearchInterests.map((interest) => (
+                            <span key={interest} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-slate-200">
+                              {interest}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-sm text-slate-500">No research interests recorded.</p>
+                      )}
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <InfoCard label="Google Scholar" value={profileData.googleScholarId || "Not set"} />
+                      <InfoCard label="ORCID" value={profileData.orcidId || "Not set"} />
+                      <InfoCard label="Scopus ID" value={profileData.scopusId || "Not set"} />
+                    </div>
+
+                    <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5">
+                      <p className="text-xs font-bold uppercase tracking-[0.25em] text-slate-500">Additional Details</p>
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        <InfoCard label="Bio" value={profileData.bio || "No bio provided"} />
+                        <InfoCard label="Location" value={profileData.location || "Not set"} />
+                        <InfoCard label="Experience" value={profileData.experience || "Not set"} />
+                        <InfoCard label="Joined" value={formatDate(profileData.createdAt)} />
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <Footer />
     </div>
   );
@@ -894,9 +1125,7 @@ const Toolbar = ({ title, value, onChange, placeholder, compact = false }) => (
 
 const UserMini = ({ user = {}, large = false }) => {
   const safeUser = user || {};
-  const avatar = safeUser.profileImage
-    ? `${import.meta.env.VITE_API_URL || "http://localhost:5000"}${safeUser.profileImage}`
-    : "";
+  const avatar = getAvatarUrl(safeUser);
   const initial = (safeUser.name || "U").charAt(0).toUpperCase();
 
   return (
@@ -916,6 +1145,23 @@ const UserMini = ({ user = {}, large = false }) => {
         <p className="truncate font-bold text-white">{safeUser.name || "Unknown user"}</p>
         <p className="truncate text-xs text-slate-500">{safeUser.email || safeUser.title || "No email"}</p>
       </div>
+    </div>
+  );
+};
+
+const UserAvatar = ({ user = {} }) => {
+  const avatar = getAvatarUrl(user);
+  const initial = (user?.name || "U").charAt(0).toUpperCase();
+
+  return avatar ? (
+    <img
+      src={avatar}
+      alt={user?.name || "User"}
+      className="h-12 w-12 rounded-2xl border border-white/10 object-cover"
+    />
+  ) : (
+    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-primary-500/15 font-bold text-primary-200">
+      {initial}
     </div>
   );
 };
@@ -955,6 +1201,13 @@ const ProfileStat = ({ label, value }) => (
   <div>
     <p className="font-bold uppercase tracking-wide text-slate-500">{label}</p>
     <p className="mt-1 truncate font-bold text-white">{value}</p>
+  </div>
+);
+
+const InfoCard = ({ label, value }) => (
+  <div className="rounded-[1.25rem] border border-white/10 bg-black/20 p-4">
+    <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500">{label}</p>
+    <p className="mt-2 break-words text-sm font-semibold text-white">{value}</p>
   </div>
 );
 
