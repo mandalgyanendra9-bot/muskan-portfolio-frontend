@@ -32,6 +32,31 @@ const PREMIUM_FEATURES = [
   },
 ];
 
+const RAZORPAY_SCRIPT_ID = "razorpay-checkout-js";
+const RAZORPAY_SCRIPT_URL = "https://checkout.razorpay.com/v1/checkout.js";
+
+const loadRazorpayCheckout = () => new Promise((resolve, reject) => {
+  if (window.Razorpay) {
+    resolve();
+    return;
+  }
+
+  const existingScript = document.getElementById(RAZORPAY_SCRIPT_ID);
+  if (existingScript) {
+    existingScript.addEventListener("load", resolve, { once: true });
+    existingScript.addEventListener("error", () => reject(new Error("Unable to load Razorpay Checkout")), { once: true });
+    return;
+  }
+
+  const script = document.createElement("script");
+  script.id = RAZORPAY_SCRIPT_ID;
+  script.src = RAZORPAY_SCRIPT_URL;
+  script.async = true;
+  script.onload = resolve;
+  script.onerror = () => reject(new Error("Unable to load Razorpay Checkout"));
+  document.body.appendChild(script);
+});
+
 const getRazorpayMode = (keyId = "") => {
   const text = String(keyId || "");
   if (text.startsWith("rzp_test_")) return "test";
@@ -67,11 +92,7 @@ const Billing = () => {
     const timer = window.setTimeout(() => {
       fetchHistory();
     }, 0);
-
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    document.body.appendChild(script);
+    void loadRazorpayCheckout();
 
     return () => window.clearTimeout(timer);
   }, []);
