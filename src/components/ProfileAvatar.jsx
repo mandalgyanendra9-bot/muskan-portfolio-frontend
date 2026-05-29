@@ -10,6 +10,9 @@ const ProfileAvatar = ({
   fallbackClassName = "flex items-center justify-center bg-primary-500/15 font-bold text-primary-200",
   onClick,
   title,
+  loading = "lazy",
+  decoding = "async",
+  fetchPriority,
 }) => {
   const [hasError, setHasError] = useState(false);
 
@@ -36,6 +39,9 @@ const ProfileAvatar = ({
       title={title || displayName}
       onClick={onClick}
       onError={() => setHasError(true)}
+      loading={loading}
+      decoding={decoding}
+      fetchPriority={fetchPriority}
       className={`${className} ${imageClassName}`}
     />
   );

@@ -124,6 +124,8 @@ const AIFeatures = () => {
           src={resolveProfilePhotoUrl(expert) || "https://via.placeholder.com/120"}
           alt={expert.name}
           className="w-14 h-14 rounded-full object-cover border border-white/10"
+          loading="lazy"
+          decoding="async"
         />
         <div className="min-w-0">
           <h3 className="text-white font-bold truncate">{expert.name}</h3>

@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
 import aboutImg from "../assets/hero.png";
 
 const About = () => {
@@ -26,9 +27,12 @@ const About = () => {
 
   return (
     <div className="min-h-screen bg-surface">
+      <SEO
+        title="About"
+        description="Learn more about Muskan Khatun, the creator behind the portfolio and expert consultation platform."
+      />
       <Navbar />
-      
-      <div className="section-padding pt-40 pb-32">
+      <main className="section-padding pt-40 pb-32">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center gap-20">
           <motion.div 
             initial={{ opacity: 0, scale: 0.9 }}
@@ -37,7 +41,16 @@ const About = () => {
             className="flex-1 relative"
           >
             <div className="relative z-10 rounded-[3.5rem] overflow-hidden glass p-4 aspect-square shadow-2xl">
-              <img src={aboutImg} alt="About Me" className="w-full h-full object-cover rounded-[2.5rem]" />
+              <img
+                src={aboutImg}
+                alt="About Me"
+                className="w-full h-full object-cover rounded-[2.5rem]"
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
+                width="1024"
+                height="1024"
+              />
             </div>
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-primary-500/10 rounded-full blur-[120px] -z-10" />
           </motion.div>
@@ -54,7 +67,7 @@ const About = () => {
             </motion.p>
             
             <motion.div variants={itemVariants} className="space-y-8">
-              <h3 className="text-2xl font-bold">Tech Toolkit</h3>
+              <h2 className="text-2xl font-bold">Tech Toolkit</h2>
               <div className="flex flex-wrap gap-4">
                 {skills.map((skill) => (
                   <motion.span 
@@ -69,7 +82,7 @@ const About = () => {
             </motion.div>
           </motion.div>
         </div>
-      </div>
+      </main>
       
       <Footer />
     </div>

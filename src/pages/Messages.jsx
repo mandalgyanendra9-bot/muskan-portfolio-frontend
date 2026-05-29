@@ -233,7 +233,7 @@ const MessagesContent = () => {
       <div key={idOf(message._id)} className={`msg-row ${isMe ? "me" : "other"}`}>
         <div className={`msg-bubble ${isMe ? "me" : "other"}`}>
           {message.messageType === "image" ? (
-            <img src={getAssetUrl(message.message)} alt="Sent attachment" className="sent-image" />
+            <img src={getAssetUrl(message.message)} alt="Sent attachment" className="sent-image" loading="lazy" decoding="async" />
           ) : (
             <span>{message.message}</span>
           )}
@@ -246,7 +246,7 @@ const MessagesContent = () => {
   return (
     <div className="min-h-screen bg-surface text-white">
       <Navbar />
-      <div className="messages-shell">
+      <main className="messages-shell">
         <aside className="chat-sidebar">
           <div className="chat-sidebar-header">
             <h2>Messages</h2>
@@ -265,7 +265,7 @@ const MessagesContent = () => {
                 >
                   <div className="contact-avatar">
                     {contact.profileImage ? (
-                      <img src={getAssetUrl(contact.profileImage)} alt={contact.name || "User"} />
+                      <img src={getAssetUrl(contact.profileImage)} alt={contact.name || "User"} loading="lazy" decoding="async" />
                     ) : (
                       <span>{(contact.name || "U").charAt(0).toUpperCase()}</span>
                     )}
@@ -314,7 +314,7 @@ const MessagesContent = () => {
 
           {imagePreview ? (
             <div className="image-preview">
-              <img src={imagePreview} alt="Selected upload" />
+              <img src={imagePreview} alt="Selected upload" loading="eager" decoding="async" />
               <span>{imageFile?.name}</span>
               <button type="button" onClick={clearImage}>Remove</button>
             </div>
@@ -356,7 +356,7 @@ const MessagesContent = () => {
             </button>
           </div>
         </section>
-      </div>
+      </main>
     </div>
   );
 };

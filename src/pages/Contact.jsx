@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
 
 const Contact = () => {
   const [formData, setFormData] = useState({ name: "", email: "", message: "" });
@@ -29,8 +30,12 @@ const Contact = () => {
 
   return (
     <div className="min-h-screen bg-surface flex flex-col">
+      <SEO
+        title="Contact"
+        description="Get in touch with Muskan Khatun for portfolio work, collaborations, and expert consultation."
+      />
       <Navbar />
-      <div className="flex-1 section-padding pt-40 pb-20">
+      <main className="flex-1 section-padding pt-40 pb-20">
         <div className="max-w-7xl mx-auto">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
@@ -177,7 +182,7 @@ const Contact = () => {
             </AnimatePresence>
           </div>
         </div>
-      </div>
+      </main>
       <Footer />
     </div>
   );

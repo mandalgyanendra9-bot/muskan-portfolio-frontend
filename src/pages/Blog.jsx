@@ -27,13 +27,12 @@ const Blog = () => {
   return (
     <div className="min-h-screen bg-surface">
       <SEO 
-        title="Blog" 
+        title="Blog"
         description="Read my latest articles on web development, design, and technology." 
         keywords="blog, tech, web development, react, nodejs"
       />
       <Navbar />
-      
-      <div className="section-padding pt-40 pb-20">
+      <main className="section-padding pt-40 pb-20">
         <div className="max-w-7xl mx-auto">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
@@ -61,7 +60,13 @@ const Blog = () => {
                 >
                   <div className="aspect-video relative overflow-hidden">
                     {post.image ? (
-                      <img src={`${import.meta.env.VITE_API_URL}${post.image}`} alt={post.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                      <img
+                        src={`${import.meta.env.VITE_API_URL}${post.image}`}
+                        alt={post.title}
+                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                        loading="lazy"
+                        decoding="async"
+                      />
                     ) : (
                       <div className="w-full h-full bg-white/5 flex items-center justify-center text-slate-700">No Image</div>
                     )}
@@ -93,7 +98,7 @@ const Blog = () => {
             )}
           </div>
         </div>
-      </div>
+      </main>
       
       <Footer />
     </div>

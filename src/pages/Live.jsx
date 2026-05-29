@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { io } from "socket.io-client";
-import { ZegoUIKitPrebuilt } from "@zegocloud/zego-uikit-prebuilt";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import Navbar from "../components/Navbar";
@@ -185,56 +184,66 @@ const Live = () => {
       zegoRef.current = null;
     }
 
-    const appID = Number(import.meta.env.VITE_ZEGO_APP_ID) || 1618361093;
-    const serverSecret = import.meta.env.VITE_ZEGO_SERVER_SECRET || "87245bdcc3539e0839e44ffc91bbfcb2";
-    const liveRole = isHost ? ZegoUIKitPrebuilt.Host : ZegoUIKitPrebuilt.Audience;
-    const liveMode = ZegoUIKitPrebuilt.LiveStreamingMode?.RealTimeLive || "RealTimeLive";
-    const userId = user?._id || `guest_${Date.now()}`;
-    const userName = user?.name || "Guest Viewer";
+    let cancelled = false;
 
-    try {
-      const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
-        appID,
-        serverSecret,
-        selectedStream.roomId,
-        userId,
-        userName
-      );
-      const zego = ZegoUIKitPrebuilt.create(kitToken);
-      zegoRef.current = zego;
-      zego.joinRoom({
-        container: liveContainerRef.current,
-        sharedLinks: [
-          {
-            name: "Copy Live Link",
-            url: `${window.location.origin}/live?stream=${selectedStream._id}`,
+    const initializeLive = async () => {
+      const { ZegoUIKitPrebuilt } = await import("@zegocloud/zego-uikit-prebuilt");
+      if (cancelled) return;
+
+      const appID = Number(import.meta.env.VITE_ZEGO_APP_ID) || 1618361093;
+      const serverSecret = import.meta.env.VITE_ZEGO_SERVER_SECRET || "87245bdcc3539e0839e44ffc91bbfcb2";
+      const liveRole = isHost ? ZegoUIKitPrebuilt.Host : ZegoUIKitPrebuilt.Audience;
+      const liveMode = ZegoUIKitPrebuilt.LiveStreamingMode?.RealTimeLive || "RealTimeLive";
+      const userId = user?._id || `guest_${Date.now()}`;
+      const userName = user?.name || "Guest Viewer";
+
+      try {
+        const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
+          appID,
+          serverSecret,
+          selectedStream.roomId,
+          userId,
+          userName
+        );
+        const zego = ZegoUIKitPrebuilt.create(kitToken);
+        zegoRef.current = zego;
+        zego.joinRoom({
+          container: liveContainerRef.current,
+          sharedLinks: [
+            {
+              name: "Copy Live Link",
+              url: `${window.location.origin}/live?stream=${selectedStream._id}`,
+            },
+          ],
+          scenario: {
+            mode: ZegoUIKitPrebuilt.LiveStreaming,
+            config: {
+              role: liveRole,
+              liveStreamingMode: liveMode,
+            },
           },
-        ],
-        scenario: {
-          mode: ZegoUIKitPrebuilt.LiveStreaming,
-          config: {
-            role: liveRole,
-            liveStreamingMode: liveMode,
+          showPreJoinView: isHost,
+          turnOnCameraWhenJoining: isHost,
+          turnOnMicrophoneWhenJoining: isHost,
+          showTextChat: false,
+          showUserList: true,
+          showScreenSharingButton: isHost,
+          startLiveButtonText: "Go Live",
+          onLiveStart: () => toast.success("You are live now"),
+          onLiveEnd: () => {
+            if (isHost) handleEndLive();
           },
-        },
-        showPreJoinView: isHost,
-        turnOnCameraWhenJoining: isHost,
-        turnOnMicrophoneWhenJoining: isHost,
-        showTextChat: false,
-        showUserList: true,
-        showScreenSharingButton: isHost,
-        startLiveButtonText: "Go Live",
-        onLiveStart: () => toast.success("You are live now"),
-        onLiveEnd: () => {
-          if (isHost) handleEndLive();
-        },
-      });
-    } catch (error) {
-      console.error(error);
-      toast.error("Live video could not start. Chat and gifts are still available.");
-    }
+        });
+      } catch (error) {
+        console.error(error);
+        toast.error("Live video could not start. Chat and gifts are still available.");
+      }
+    };
+
+    initializeLive();
 
     return () => {
+      cancelled = true;
       if (zegoRef.current) {
         zegoRef.current.destroy();
         zegoRef.current = null;

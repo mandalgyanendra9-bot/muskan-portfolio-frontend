@@ -68,7 +68,7 @@ function UploadDP() {
   return (
     <div className="min-h-screen bg-surface flex flex-col">
       <Navbar />
-      <div className="flex-1 flex items-center justify-center p-6 pt-32 relative overflow-hidden">
+      <main className="flex-1 flex items-center justify-center p-6 pt-32 relative overflow-hidden">
         <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-primary-500/10 rounded-full blur-[120px] -z-10 animate-pulse" />
         
         <div className="glass p-12 rounded-[2.5rem] w-full max-w-lg text-center border-white/5 relative shadow-2xl">
@@ -80,6 +80,8 @@ function UploadDP() {
                 src={preview}
                 alt="Preview"
                 className="w-48 h-48 rounded-full mx-auto object-cover border-4 border-white/10 shadow-2xl transition-transform duration-500 group-hover:scale-105"
+                loading="eager"
+                decoding="async"
               />
             ) : (
               <div className="w-48 h-48 rounded-full mx-auto bg-white/5 border-4 border-dashed border-white/10 flex items-center justify-center text-slate-500 group-hover:border-primary-500/30 transition-colors">
@@ -112,7 +114,7 @@ function UploadDP() {
             <p className="text-slate-500 text-sm">Supported formats: JPG, PNG, GIF</p>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

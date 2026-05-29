@@ -241,6 +241,8 @@ const Profile = () => {
                   className="w-full h-full"
                   imageClassName="w-full h-full object-cover"
                   fallbackClassName="w-full h-full bg-gradient-to-br from-primary-500/20 to-purple-500/20 flex items-center justify-center text-5xl font-bold text-primary-400"
+                  loading="eager"
+                  fetchPriority="high"
                 />
               </div>
               <div className="absolute inset-0 rounded-full bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -527,7 +529,7 @@ const Profile = () => {
                 <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
                   {gallery.map((img, idx) => (
                     <div key={idx} className="relative group aspect-square rounded-xl overflow-hidden border border-white/10">
-                      <img src={img.startsWith("http") ? img : `${import.meta.env.VITE_API_URL}${img}`} alt={`Gallery ${idx}`} className="w-full h-full object-cover" />
+                      <img src={img.startsWith("http") ? img : `${import.meta.env.VITE_API_URL}${img}`} alt={`Gallery ${idx}`} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                       <button type="button" onClick={() => handleGalleryDelete(idx)}
                         className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white w-6 h-6 rounded-full text-xs opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
                         ✕
@@ -576,7 +578,7 @@ const Profile = () => {
                   <div className="flex items-center gap-4 mb-4">
                     <div className="w-12 h-12 rounded-full overflow-hidden border border-white/10 flex-shrink-0">
                       {resolveProfilePhotoUrl(r.client) ? (
-                        <img src={resolveProfilePhotoUrl(r.client)} alt={r.client.name} className="w-full h-full object-cover" />
+                        <img src={resolveProfilePhotoUrl(r.client)} alt={r.client.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                       ) : (
                         <div className="w-full h-full bg-primary-500/20 flex items-center justify-center text-primary-400 font-bold">{r.client?.name?.[0]?.toUpperCase()}</div>
                       )}

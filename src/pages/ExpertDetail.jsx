@@ -195,6 +195,8 @@ const ExpertDetail = () => {
                 watermarkId={`${expert._id || id}-profile-photo`}
                 watermarkEnabled={watermarkEnabled}
                 signed
+                loading="eager"
+                fetchPriority="high"
               />
               <span className={`absolute bottom-2 right-2 w-5 h-5 rounded-full border-4 border-surface ${expert.isAvailable ? 'bg-emerald-500' : 'bg-slate-500'}`} />
             </div>
@@ -470,6 +472,8 @@ const ExpertDetail = () => {
                         src={resolveProfilePhotoUrl(r.client) || "https://via.placeholder.com/80"}
                         alt={r.client?.name}
                         className="w-12 h-12 rounded-full object-cover border border-white/10"
+                        loading="lazy"
+                        decoding="async"
                       />
                       <div>
                         <h4 className="font-bold text-white text-base">{r.client?.name || "Client"}</h4>

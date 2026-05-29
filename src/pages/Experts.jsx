@@ -85,8 +85,7 @@ const Experts = () => {
           onClose={() => setSelectedExpert(null)} 
         />
       )}
-      
-      <div className="section-padding pt-40 pb-20">
+      <main className="section-padding pt-40 pb-20">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
           <motion.div 
@@ -200,6 +199,8 @@ const Experts = () => {
                       src={getAssetUrl(expert.profileImage, "https://via.placeholder.com/150")} 
                       alt={expert.name || "Expert"} 
                       className="w-full h-full object-cover rounded-full"
+                      loading="lazy"
+                      decoding="async"
                     />
                   </div>
                   
@@ -235,7 +236,7 @@ const Experts = () => {
             </div>
           )}
         </div>
-      </div>
+      </main>
       
       <Footer />
     </div>

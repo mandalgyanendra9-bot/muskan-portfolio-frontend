@@ -95,6 +95,7 @@ const Navbar = () => {
                     className="w-full h-full"
                     imageClassName="w-full h-full object-cover"
                     fallbackClassName="w-full h-full bg-primary-500/20 flex items-center justify-center text-primary-400 font-bold text-sm"
+                    loading="eager"
                   />
                 </div>
                 {/* Online indicator */}

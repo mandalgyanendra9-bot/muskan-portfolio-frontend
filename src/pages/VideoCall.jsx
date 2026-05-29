@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { ZegoUIKitPrebuilt } from "@zegocloud/zego-uikit-prebuilt";
 import toast from "react-hot-toast";
 import {
   ConsentModal,
@@ -288,52 +287,62 @@ const VideoCall = () => {
 
     if (isAfterBookedTime || !canJoinNow || !consentAccepted || zegoRef.current || !meetingContainerRef.current) return undefined;
 
-    const appID = Number(import.meta.env.VITE_ZEGO_APP_ID) || 1618361093;
-    const serverSecret = import.meta.env.VITE_ZEGO_SERVER_SECRET || "87245bdcc3539e0839e44ffc91bbfcb2";
+    let cancelled = false;
 
-    if (!import.meta.env.VITE_ZEGO_APP_ID) {
-      toast("Running in Demo Mode. Set VITE_ZEGO_APP_ID in .env for production.", { icon: "info" });
-    }
+    const initializeCall = async () => {
+      const { ZegoUIKitPrebuilt } = await import("@zegocloud/zego-uikit-prebuilt");
+      if (cancelled) return;
 
-    try {
-      const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
-        appID,
-        serverSecret,
-        roomId,
-        user?._id || Date.now().toString(),
-        user?.name || "Anonymous User"
-      );
+      const appID = Number(import.meta.env.VITE_ZEGO_APP_ID) || 1618361093;
+      const serverSecret = import.meta.env.VITE_ZEGO_SERVER_SECRET || "87245bdcc3539e0839e44ffc91bbfcb2";
 
-      const zp = ZegoUIKitPrebuilt.create(kitToken);
-      zegoRef.current = zp;
+      if (!import.meta.env.VITE_ZEGO_APP_ID) {
+        toast("Running in Demo Mode. Set VITE_ZEGO_APP_ID in .env for production.", { icon: "info" });
+      }
 
-      zp.joinRoom({
-        container: meetingContainerRef.current,
-        sharedLinks: [
-          {
-            name: "Copy Meeting Link",
-            url: window.location.origin + `/video-call/${roomId}`,
+      try {
+        const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
+          appID,
+          serverSecret,
+          roomId,
+          user?._id || Date.now().toString(),
+          user?.name || "Anonymous User"
+        );
+
+        const zp = ZegoUIKitPrebuilt.create(kitToken);
+        zegoRef.current = zp;
+
+        zp.joinRoom({
+          container: meetingContainerRef.current,
+          sharedLinks: [
+            {
+              name: "Copy Meeting Link",
+              url: window.location.origin + `/video-call/${roomId}`,
+            },
+          ],
+          scenario: {
+            mode: ZegoUIKitPrebuilt.OneONoneCall,
           },
-        ],
-        scenario: {
-          mode: ZegoUIKitPrebuilt.OneONoneCall,
-        },
-        showScreenSharingButton: true,
-        showMyCameraToggleButton: true,
-        showMyMicrophoneToggleButton: true,
-        showAudioVideoSettingsButton: true,
-        showTextChat: true,
-        showUserList: false,
-        maxUsers: 2,
-        layout: "Auto",
-        onLeaveRoom: handleLeaveRoom,
-      });
-    } catch (meetingError) {
-      console.error("ZegoCloud Initialization Error:", meetingError);
-      toast.error("Failed to start video call. Check console for details.");
-    }
+          showScreenSharingButton: true,
+          showMyCameraToggleButton: true,
+          showMyMicrophoneToggleButton: true,
+          showAudioVideoSettingsButton: true,
+          showTextChat: true,
+          showUserList: false,
+          maxUsers: 2,
+          layout: "Auto",
+          onLeaveRoom: handleLeaveRoom,
+        });
+      } catch (meetingError) {
+        console.error("ZegoCloud Initialization Error:", meetingError);
+        toast.error("Failed to start video call. Check console for details.");
+      }
+    };
+
+    initializeCall();
 
     return () => {
+      cancelled = true;
       if (zegoRef.current) {
         zegoRef.current.destroy();
         zegoRef.current = null;

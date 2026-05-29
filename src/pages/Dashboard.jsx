@@ -495,6 +495,8 @@ const Dashboard = () => {
                   src={resolveProfilePhotoUrl(user) || "https://via.placeholder.com/150"}
                   alt={user.name}
                   className="w-24 h-24 rounded-full object-cover border-4 border-white/10 shadow-xl"
+                  loading="eager"
+                  decoding="async"
                 />
                 <div>
                   <h1 className="text-3xl font-extrabold text-white">Hello, {user.name}</h1>
@@ -1011,6 +1013,8 @@ const Dashboard = () => {
                                   src={resolveProfilePhotoUrl(b.expert) || "https://via.placeholder.com/100"}
                                   alt={b.expert?.name}
                                   className="w-16 h-16 rounded-full object-cover border border-white/10"
+                                  loading="lazy"
+                                  decoding="async"
                                 />
                                 <div>
                                   <h4 className="text-xl font-bold text-white">{b.expert?.name}</h4>
@@ -1113,6 +1117,8 @@ const Dashboard = () => {
                             src={resolveProfilePhotoUrl(expert) || "https://via.placeholder.com/150"}
                             alt={expert.name}
                             className="w-full h-full object-cover rounded-full"
+                            loading="lazy"
+                            decoding="async"
                           />
                         </div>
 

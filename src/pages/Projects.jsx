@@ -7,6 +7,7 @@ import Footer from "../components/Footer";
 import { ProjectSkeleton } from "../components/Skeleton";
 import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
+import SEO from "../components/SEO";
 
 const API_URL = import.meta.env.VITE_API_URL || "https://muskan-portfolio-backend.onrender.com";
 
@@ -56,9 +57,12 @@ const Projects = () => {
 
   return (
     <div className="min-h-screen bg-surface">
+      <SEO
+        title="Projects"
+        description="Browse featured projects, case studies, and proof of work from Muskan Khatun's portfolio."
+      />
       <Navbar />
-      
-      <div className="section-padding pt-40">
+      <main className="section-padding pt-40">
         <div className="max-w-7xl mx-auto">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
@@ -110,6 +114,8 @@ const Projects = () => {
                       src={getAssetUrl(project.image, "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800&q=80")}
                       alt={project.title || "Project"}
                       className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                      loading="lazy"
+                      decoding="async"
                     />
                     <div className="absolute top-4 left-4">
                       <span className="bg-surface/80 backdrop-blur-md text-primary-400 text-[10px] font-bold px-3 py-1 rounded-full border border-white/5 uppercase tracking-wider">
@@ -156,7 +162,7 @@ const Projects = () => {
             )}
           </div>
         </div>
-      </div>
+      </main>
       
       <Footer />
     </div>

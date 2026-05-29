@@ -508,6 +508,9 @@ export const SecureMediaImage = ({
   signed = true,
   onClick,
   title,
+  loading = "lazy",
+  decoding = "async",
+  fetchPriority,
 }) => {
   const [broken, setBroken] = useState(false);
   const { signedUrl } = useSignedMediaUrl(source, { enabled: signed });
@@ -545,6 +548,9 @@ export const SecureMediaImage = ({
           title={title || displayName}
           className={`h-full w-full object-cover ${imageClassName}`}
           draggable={false}
+          loading={loading}
+          decoding={decoding}
+          fetchPriority={fetchPriority}
           onError={() => setBroken(true)}
         />
       )}

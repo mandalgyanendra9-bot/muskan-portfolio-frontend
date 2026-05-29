@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+import SEO from "../components/SEO";
 
 const API_URL = import.meta.env.VITE_API_URL || "https://muskan-portfolio-backend.onrender.com";
 
@@ -169,10 +170,14 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-surface">
+      <SEO
+        title="Portfolio & Expert Consultations"
+        description="Muskan Khatun's portfolio, expert consultations, live sessions, and featured projects."
+      />
       <Navbar />
-      
-      {/* Hero Section */}
-      <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
+      <main>
+        {/* Hero Section */}
+        <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
         {/* Colorful Background Blurs */}
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary-500/10 rounded-full blur-[100px] -z-10 animate-pulse" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-[100px] -z-10 animate-pulse delay-700" />
@@ -206,10 +211,10 @@ const Home = () => {
             </div>
           </motion.div>
         </div>
-      </div>
+        </div>
 
-      {/* Premium Features Section */}
-      <div className="py-20 border-y border-white/5 bg-surface-variant/10">
+        {/* Premium Features Section */}
+        <div className="py-20 border-y border-white/5 bg-surface-variant/10">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-10">
             <div>
@@ -235,10 +240,10 @@ const Home = () => {
             ))}
           </div>
         </div>
-      </div>
+        </div>
 
-      {/* AI Features Section */}
-      <div className="py-20 bg-surface-variant/10 border-b border-white/5">
+        {/* AI Features Section */}
+        <div className="py-20 bg-surface-variant/10 border-b border-white/5">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-10">
             <div>
@@ -262,10 +267,10 @@ const Home = () => {
             ))}
           </div>
         </div>
-      </div>
+        </div>
 
-      {/* Security Features Section */}
-      <div className="py-20 bg-surface border-b border-white/5">
+        {/* Security Features Section */}
+        <div className="py-20 bg-surface border-b border-white/5">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-10">
             <div>
@@ -289,10 +294,10 @@ const Home = () => {
             ))}
           </div>
         </div>
-      </div>
+        </div>
 
-      {/* Live Streaming Section */}
-      <div className="py-20 bg-surface border-b border-white/5">
+        {/* Live Streaming Section */}
+        <div className="py-20 bg-surface border-b border-white/5">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-10">
             <div>
@@ -316,10 +321,10 @@ const Home = () => {
             ))}
           </div>
         </div>
-      </div>
+        </div>
 
-      {/* Powerful Features Section */}
-      <div className="py-24 bg-surface-variant/20 border-b border-white/5">
+        {/* Powerful Features Section */}
+        <div className="py-24 bg-surface-variant/20 border-b border-white/5">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-10">
             <div>
@@ -356,10 +361,10 @@ const Home = () => {
             ))}
           </div>
         </div>
-      </div>
+        </div>
 
-      {/* Featured Experts Section */}
-      <div className="py-24 bg-surface-variant/20 border-y border-white/5">
+        {/* Featured Experts Section */}
+        <div className="py-24 bg-surface-variant/20 border-y border-white/5">
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col md:flex-row justify-between items-center md:items-end mb-12 gap-4">
             <div className="text-center md:text-left">
@@ -392,11 +397,13 @@ const Home = () => {
                   </span>
                   
                   <div className="w-24 h-24 rounded-full border-2 border-primary-500/15 mb-4 p-1">
-                    <img 
-                      src={getAssetUrl(expert.profileImage, "https://via.placeholder.com/150")} 
-                      alt={expert.name || "Expert"} 
-                      className="w-full h-full object-cover rounded-full"
-                    />
+                  <img 
+                    src={getAssetUrl(expert.profileImage, "https://via.placeholder.com/150")} 
+                    alt={expert.name || "Expert"} 
+                    className="w-full h-full object-cover rounded-full"
+                    loading="lazy"
+                    decoding="async"
+                  />
                   </div>
                   
                   <h3 className="text-xl font-bold text-white mb-1 group-hover:text-primary-400 transition-colors">{expert.name || "Expert"}</h3>
@@ -419,10 +426,10 @@ const Home = () => {
             </div>
           )}
         </div>
-      </div>
+        </div>
 
-      {/* Featured Projects Preview */}
-      <div className="py-24 max-w-7xl mx-auto px-6">
+        {/* Featured Projects Preview */}
+        <div className="py-24 max-w-7xl mx-auto px-6">
         <div className="flex flex-col md:flex-row justify-between items-center md:items-end mb-12 gap-4">
           <div className="text-center md:text-left">
             <h2 className="text-4xl font-extrabold text-white">Featured <span className="text-accent">Projects</span></h2>
@@ -451,6 +458,8 @@ const Home = () => {
                     src={getAssetUrl(project.image, "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800&q=80")} 
                     alt={project.title || "Project"}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                    loading="lazy"
+                    decoding="async"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-surface to-transparent opacity-60"></div>
                 </div>
@@ -475,10 +484,10 @@ const Home = () => {
             ))}
           </div>
         )}
-      </div>
+        </div>
 
-      {/* Reviews & Testimonials Section */}
-      <div className="py-24 bg-surface-variant/20 border-t border-white/5">
+        {/* Reviews & Testimonials Section */}
+        <div className="py-24 bg-surface-variant/20 border-t border-white/5">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-extrabold text-white">Client <span className="text-primary-400">Testimonials</span></h2>
@@ -520,7 +529,7 @@ const Home = () => {
                 </div>
                 
                 <div className="flex items-center gap-3 mt-8 border-t border-white/5 pt-4">
-                  <img src={t.avatar} alt={t.client} className="w-10 h-10 rounded-full object-cover" />
+                  <img src={t.avatar} alt={t.client} className="w-10 h-10 rounded-full object-cover" loading="lazy" decoding="async" />
                   <div>
                     <h4 className="font-bold text-white text-sm">{t.client}</h4>
                     <p className="text-slate-500 text-[10px] uppercase font-bold">{t.role}</p>
@@ -530,8 +539,8 @@ const Home = () => {
             ))}
           </div>
         </div>
-      </div>
-      
+        </div>
+      </main>
       <Footer />
     </div>
   );
