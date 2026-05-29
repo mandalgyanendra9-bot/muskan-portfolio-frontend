@@ -89,24 +89,24 @@ body.security-privacy-mode canvas {
 
 @keyframes privacy-watermark-float {
   0% {
-    transform: translate3d(0, 0, 0) rotate(-17deg);
-    opacity: 0.45;
+    transform: translate3d(0, 0, 0) rotate(var(--wm-rotation, -17deg)) scale(var(--wm-scale, 1));
+    opacity: 0.24;
   }
   25% {
-    transform: translate3d(6%, -4%, 0) rotate(-14deg);
-    opacity: 0.8;
+    transform: translate3d(var(--wm-x1, 6px), var(--wm-y1, -4px), 0) rotate(calc(var(--wm-rotation, -17deg) + 5deg)) scale(var(--wm-scale, 1));
+    opacity: 0.32;
   }
   50% {
-    transform: translate3d(-4%, 7%, 0) rotate(-19deg);
-    opacity: 0.55;
+    transform: translate3d(var(--wm-x2, -4px), var(--wm-y2, 7px), 0) rotate(calc(var(--wm-rotation, -17deg) - 7deg)) scale(var(--wm-scale, 1));
+    opacity: 0.28;
   }
   75% {
-    transform: translate3d(8%, 2%, 0) rotate(-15deg);
-    opacity: 0.85;
+    transform: translate3d(var(--wm-x3, 8px), var(--wm-y3, 2px), 0) rotate(calc(var(--wm-rotation, -17deg) + 9deg)) scale(var(--wm-scale, 1));
+    opacity: 0.35;
   }
   100% {
-    transform: translate3d(0, 0, 0) rotate(-17deg);
-    opacity: 0.45;
+    transform: translate3d(0, 0, 0) rotate(var(--wm-rotation, -17deg)) scale(var(--wm-scale, 1));
+    opacity: 0.24;
   }
 }
 
@@ -119,16 +119,38 @@ body.security-privacy-mode canvas {
   }
 }
 
+.privacy-watermark-drift {
+  animation-name: privacy-watermark-float, privacy-watermark-shimmer;
+  animation-timing-function: ease-in-out, linear;
+  animation-iteration-count: infinite, infinite;
+  animation-direction: alternate, normal;
+  will-change: transform, opacity, filter;
+  text-shadow: 0 0 12px rgba(2, 6, 23, 0.9);
+}
+
+@keyframes privacy-watermark-shimmer {
+  0%, 100% {
+    opacity: 0.18;
+  }
+  40% {
+    opacity: 0.32;
+  }
+  70% {
+    opacity: 0.24;
+  }
+}
+
 .privacy-watermark-float {
-  animation-name: privacy-watermark-float;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
+  animation-name: privacy-watermark-float, privacy-watermark-shimmer;
+  animation-timing-function: ease-in-out, linear;
+  animation-iteration-count: infinite, infinite;
+  animation-direction: alternate, normal;
 }
 
 .privacy-watermark-sweep {
-  animation-name: privacy-watermark-sweep;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
+  animation-name: privacy-watermark-sweep, privacy-watermark-shimmer;
+  animation-timing-function: linear, linear;
+  animation-iteration-count: infinite, infinite;
 }
 
 @media print {

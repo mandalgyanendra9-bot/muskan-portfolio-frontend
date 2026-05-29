@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
@@ -8,7 +8,12 @@ import SEO from "../components/SEO";
 import BookingModal from "../components/BookingModal";
 import toast from "react-hot-toast";
 import { getProfilePhotoCandidate, resolveProfilePhotoUrl } from "../utils/profilePhoto";
-import { SecureMediaImage, PrivacyWatermark, useSensitiveContentProtection } from "../components/SensitiveContentProtection";
+import {
+  SecureMediaImage,
+  PrivacyWatermark,
+  useSensitiveContentProtection,
+  useWatermarkProtectionEnabled,
+} from "../components/SensitiveContentProtection";
 
 const getAudienceId = (item) => (typeof item === "string" ? item : item?._id);
 
@@ -22,6 +27,8 @@ const ExpertDetail = () => {
   const [reviews, setReviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
+  const [watermarkTick, setWatermarkTick] = useState(() => Date.now());
+  const { enabled: watermarkEnabled } = useWatermarkProtectionEnabled();
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -47,6 +54,11 @@ const ExpertDetail = () => {
 
     return () => window.clearTimeout(timer);
   }, [id]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setWatermarkTick(Date.now()), 1500);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const handleBookingClick = () => {
     if (!user) {
@@ -112,12 +124,16 @@ const ExpertDetail = () => {
     details: expert?.name || "Expert profile",
   });
   const profileSessionId = `expert-profile-${id}`;
-  const profileWatermarkLines = [
-    user?.name || "Guest viewer",
-    user?.email || user?.phone || "No email/phone",
-    `Session ${profileSessionId}`,
-    new Date().toLocaleString(),
-  ];
+  const viewerContact = [user?.email, user?.phone || user?.phoneNumber].filter(Boolean).join(" | ") || "No email/phone";
+  const profileWatermarkLines = useMemo(
+    () => [
+      user?.name || "Guest viewer",
+      viewerContact,
+      `Session ${profileSessionId}`,
+      new Date(watermarkTick).toLocaleString(),
+    ],
+    [profileSessionId, user?.name, viewerContact, watermarkTick]
+  );
 
   if (loading) {
     return (
@@ -176,6 +192,8 @@ const ExpertDetail = () => {
                 imageClassName="rounded-full"
                 fallbackClassName="rounded-full bg-white/5 text-3xl font-extrabold text-primary-200"
                 watermarkLines={profileWatermarkLines}
+                watermarkId={`${expert._id || id}-profile-photo`}
+                watermarkEnabled={watermarkEnabled}
                 signed
               />
               <span className={`absolute bottom-2 right-2 w-5 h-5 rounded-full border-4 border-surface ${expert.isAvailable ? 'bg-emerald-500' : 'bg-slate-500'}`} />
@@ -374,7 +392,7 @@ const ExpertDetail = () => {
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {expert.portfolioGallery.map((img, i) => (
-                <SecureMediaImage
+              <SecureMediaImage
                   key={i}
                   source={img}
                   alt={`Gallery ${i + 1}`}
@@ -382,6 +400,8 @@ const ExpertDetail = () => {
                   imageClassName="group-hover:scale-105 transition-transform duration-500"
                   fallbackClassName="text-slate-400 text-sm"
                   watermarkLines={profileWatermarkLines}
+                  watermarkId={`${expert._id || id}-gallery-${i}`}
+                  watermarkEnabled={watermarkEnabled}
                   signed
                 />
               ))}
@@ -402,10 +422,16 @@ const ExpertDetail = () => {
               {projects.map((project) => (
                 <div key={project._id} className="glass rounded-[2.5rem] overflow-hidden border-white/5 group shadow-lg">
                   <div className="h-52 overflow-hidden relative">
-                    <img 
-                      src={project.image ? `${import.meta.env.VITE_API_URL}${project.image}` : "https://via.placeholder.com/800"} 
+                    <SecureMediaImage
+                      source={project.image ? `${import.meta.env.VITE_API_URL}${project.image}` : ""}
                       alt={project.title}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      className="h-full w-full"
+                      imageClassName="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      fallbackClassName="w-full h-full flex items-center justify-center bg-white/5 text-slate-400 text-sm"
+                      watermarkLines={profileWatermarkLines}
+                      watermarkId={`${project._id}-project`}
+                      watermarkEnabled={watermarkEnabled}
+                      signed
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-surface to-transparent opacity-60"></div>
                   </div>

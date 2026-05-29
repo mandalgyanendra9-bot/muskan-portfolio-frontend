@@ -114,7 +114,7 @@ const Admin = () => {
   const [users, setUsers] = useState([]);
   const [payments, setPayments] = useState([]);
   const [payouts, setPayouts] = useState([]);
-  const [adminSettings, setAdminSettings] = useState({ commissionPercent: 20 });
+  const [adminSettings, setAdminSettings] = useState({ commissionPercent: 20, watermarkProtectionEnabled: true });
   const [reports, setReports] = useState([]);
   const [violations, setViolations] = useState([]);
   const [bookings, setBookings] = useState([]);
@@ -131,6 +131,7 @@ const Admin = () => {
   const [reportSearch, setReportSearch] = useState("");
   const [violationSearch, setViolationSearch] = useState("");
   const [commissionPercent, setCommissionPercent] = useState(20);
+  const [watermarkProtectionEnabled, setWatermarkProtectionEnabled] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [downloadingPayoutReport, setDownloadingPayoutReport] = useState(false);
   const [roleDrafts, setRoleDrafts] = useState({});
@@ -161,6 +162,7 @@ setBookings(bookingsRes.data);
 setPayouts(payoutsRes.data);
 setAdminSettings(settingsRes.data);
 setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
+setWatermarkProtectionEnabled(settingsRes.data.watermarkProtectionEnabled !== false);
       if (showToast) toast.success("Admin dashboard refreshed");
     } catch (err) {
       console.error(err);
@@ -290,11 +292,27 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
     try {
       const res = await axios.put(
         `${API_BASE}/admin/settings`,
-        { commissionPercent: Number(commissionPercent) },
+        {
+          commissionPercent: Number(commissionPercent),
+          watermarkProtectionEnabled,
+        },
         { headers: getAuthHeaders() }
       );
       setAdminSettings(res.data.settings);
       setCommissionPercent(res.data.settings.commissionPercent);
+      setWatermarkProtectionEnabled(res.data.settings.watermarkProtectionEnabled !== false);
+      try {
+        window.localStorage.setItem(
+          "privacy-watermark-enabled-cache",
+          JSON.stringify({
+            value: res.data.settings.watermarkProtectionEnabled !== false,
+            expiresAt: Date.now() + 5 * 60 * 1000,
+          })
+        );
+      } catch {
+        // Cache write is optional.
+      }
+      window.dispatchEvent(new Event("security-watermark-settings"));
       toast.success("Admin settings saved");
       fetchData();
     } catch (err) {
@@ -899,7 +917,7 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
                 <section className="space-y-6">
                   <div className="flex flex-col gap-2 border-b border-white/10 pb-4">
                     <h2 className="text-2xl font-bold text-white">Admin Settings</h2>
-                    <p className="text-sm text-slate-400">Set the platform commission applied to future successful booking payments.</p>
+                    <p className="text-sm text-slate-400">Set the platform commission and toggle dynamic watermark protection for sensitive media.</p>
                   </div>
 
                   <form onSubmit={handleSaveSettings} className="max-w-xl rounded-lg border border-white/10 bg-white/[0.03] p-6">
@@ -925,6 +943,20 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
                       </div>
                       <p className="text-xs text-slate-500">Current default is {adminSettings.commissionPercent ?? 20}%.</p>
                     </div>
+                    <label className="mt-6 flex items-start gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={watermarkProtectionEnabled}
+                        onChange={(event) => setWatermarkProtectionEnabled(event.target.checked)}
+                        className="mt-1 h-4 w-4 rounded border-white/20 bg-slate-900 text-primary-500 focus:ring-primary-500"
+                      />
+                      <span className="text-sm text-slate-200">
+                        <span className="block font-bold text-white">Dynamic watermark protection</span>
+                        <span className="block text-xs text-slate-500">
+                          Show moving user/session watermarks on protected photos, video calls, and live streams.
+                        </span>
+                      </span>
+                    </label>
                   </form>
                 </section>
               )}

@@ -8,7 +8,11 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 import { useAuth } from "../context/AuthContext";
-import { SecureMediaImage } from "../components/SensitiveContentProtection";
+import {
+  PrivacyWatermark,
+  SecureMediaImage,
+  useWatermarkProtectionEnabled,
+} from "../components/SensitiveContentProtection";
 
 const API_URL = import.meta.env.VITE_API_URL || "https://muskan-portfolio-backend.onrender.com";
 const SOCKET_URL = API_URL || "http://localhost:5000";
@@ -37,14 +41,17 @@ const Live = () => {
   const [liveForm, setLiveForm] = useState({ title: "", category: "Portfolio Live" });
   const [messages, setMessages] = useState([]);
   const [giftFeed, setGiftFeed] = useState([]);
+  const [watermarkTick, setWatermarkTick] = useState(() => Date.now());
   const socketRef = useRef(null);
   const liveContainerRef = useRef(null);
   const zegoRef = useRef(null);
+  const { enabled: watermarkEnabled } = useWatermarkProtectionEnabled();
 
   const token = localStorage.getItem("token");
   const requestedStreamId = searchParams.get("stream");
   const isHost = selectedStream?.host?._id === user?._id || selectedStream?.host === user?._id;
   const coinBalance = user?.coinBalance ?? 250;
+  const viewerContact = [user?.email, user?.phone || user?.phoneNumber].filter(Boolean).join(" | ") || "No email/phone";
 
   const headers = useMemo(() => (
     token ? { Authorization: token } : {}
@@ -76,6 +83,11 @@ const Live = () => {
 
     return () => window.clearTimeout(timer);
   }, [requestedStreamId]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setWatermarkTick(Date.now()), 1500);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const socket = io(SOCKET_URL, {
@@ -153,6 +165,18 @@ const Live = () => {
       setEnding(false);
     }
   }, [selectedStream, isHost, headers]);
+
+  const liveWatermarkLines = useMemo(
+    () => [
+      user?.name || "Live viewer",
+      viewerContact,
+      selectedStream?.roomId || selectedStream?._id
+        ? `Session ${selectedStream.roomId || selectedStream._id}`
+        : "Live session",
+      new Date(watermarkTick).toLocaleString(),
+    ],
+    [selectedStream?._id, selectedStream?.roomId, user?.name, viewerContact, watermarkTick]
+  );
 
   useEffect(() => {
     if (!selectedStream?.roomId || !liveContainerRef.current) return undefined;
@@ -360,13 +384,22 @@ const Live = () => {
                       </button>
                     )}
                   </div>
-                  <div
-                    key={selectedStream._id}
-                    ref={liveContainerRef}
-                    className="w-full min-h-[520px] rounded-2xl overflow-hidden bg-slate-950 border border-white/10"
-                  />
+                  <div className="relative w-full min-h-[520px] rounded-2xl overflow-hidden bg-slate-950 border border-white/10">
+                    <div
+                      key={selectedStream._id}
+                      ref={liveContainerRef}
+                      className="absolute inset-0"
+                    />
+                    <PrivacyWatermark
+                      lines={liveWatermarkLines}
+                      watermarkId={selectedStream.roomId || selectedStream._id}
+                      enabled={watermarkEnabled}
+                      variant="live"
+                      density="dense"
+                    />
+                  </div>
                 </>
-              ) : (
+            ) : (
                 <div className="min-h-[520px] rounded-2xl border border-dashed border-white/10 bg-white/[0.03] flex items-center justify-center text-center p-8">
                   <div>
                     <h2 className="text-2xl font-bold text-white">No live stream selected</h2>

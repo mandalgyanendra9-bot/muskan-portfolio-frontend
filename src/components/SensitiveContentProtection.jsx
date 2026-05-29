@@ -7,6 +7,173 @@ import { useSignedMediaUrl, extractPrivateMediaPathFromValue } from "../utils/pr
 
 const API_ROOT = import.meta.env.VITE_API_URL || "http://localhost:5000";
 const WARNING_TEXT = "Screenshots/recording are prohibited and may lead to account ban.";
+const PRIVACY_SETTINGS_ENDPOINT = `${API_ROOT}/api/privacy/settings`;
+const PRIVACY_SETTINGS_CACHE_KEY = "privacy-watermark-enabled-cache";
+const PRIVACY_SETTINGS_TTL = 5 * 60 * 1000;
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+const hashString = (value = "") => {
+  const text = String(value || "");
+  let hash = 0;
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+  }
+
+  return Math.abs(hash) || 1;
+};
+
+const seededRandom = (seed = 1) => {
+  let state = seed % 2147483647;
+  if (state <= 0) state += 2147483646;
+
+  return () => {
+    state = (state * 16807) % 2147483647;
+    return (state - 1) / 2147483646;
+  };
+};
+
+const buildWatermarkTextVariants = (lines = []) => {
+  const cleaned = lines.map((line) => String(line || "").trim()).filter(Boolean);
+  if (!cleaned.length) return [WARNING_TEXT];
+
+  const joined = cleaned.join(" | ");
+  const reversed = [...cleaned].reverse().join(" | ");
+  const rotated = cleaned.length > 2 ? `${cleaned[0]} | ${cleaned[cleaned.length - 1]} | ${cleaned.slice(1, -1).join(" | ")}` : joined;
+
+  return [joined, reversed, rotated, ...cleaned];
+};
+
+const buildWatermarkItems = ({
+  lines = [],
+  seedText = "",
+  frame = 0,
+  density = "dense",
+}) => {
+  const variants = buildWatermarkTextVariants(lines);
+  const seed = hashString(`${seedText}|${variants.join("|")}|${frame}`);
+  const random = seededRandom(seed);
+  const count = density === "sparse" ? 10 : density === "medium" ? 14 : 18;
+
+  return Array.from({ length: count }, (_, index) => {
+    const text = variants[index % variants.length];
+    const top = clamp(Math.round(random() * 112 - 8), -8, 104);
+    const left = clamp(Math.round(random() * 112 - 8), -8, 108);
+    const scale = (0.86 + random() * 0.42).toFixed(2);
+    const opacity = (0.12 + random() * 0.24).toFixed(2);
+    const duration = (7.5 + random() * 6.5).toFixed(2);
+    const delay = `-${(random() * 7.5).toFixed(2)}s`;
+    const rotation = `${Math.round(-28 + random() * 56)}deg`;
+    const x1 = `${Math.round((random() - 0.5) * 34)}px`;
+    const y1 = `${Math.round((random() - 0.5) * 24)}px`;
+    const x2 = `${Math.round((random() - 0.5) * 42)}px`;
+    const y2 = `${Math.round((random() - 0.5) * 30)}px`;
+    const x3 = `${Math.round((random() - 0.5) * 46)}px`;
+    const y3 = `${Math.round((random() - 0.5) * 34)}px`;
+    const blur = random() > 0.78 ? "0.25px" : "0px";
+
+    return {
+      text,
+      style: {
+        top: `${top}%`,
+        left: `${left}%`,
+        opacity,
+        animationDelay: delay,
+        animationDuration: `${duration}s`,
+        "--wm-scale": scale,
+        "--wm-rotation": rotation,
+        "--wm-x1": x1,
+        "--wm-y1": y1,
+        "--wm-x2": x2,
+        "--wm-y2": y2,
+        "--wm-x3": x3,
+        "--wm-y3": y3,
+        "--wm-blur": blur,
+        "--wm-z": String(10 + index),
+      },
+    };
+  });
+};
+
+const getWatermarkToggleCache = () => {
+  if (typeof window === "undefined") return { value: true, expiresAt: 0 };
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PRIVACY_SETTINGS_CACHE_KEY) || "{}");
+    if (typeof parsed.value === "boolean" && Number(parsed.expiresAt) > Date.now()) {
+      return { value: parsed.value, expiresAt: Number(parsed.expiresAt) };
+    }
+  } catch {
+    // Ignore cache parse issues and fall back to the API.
+  }
+
+  return { value: true, expiresAt: 0 };
+};
+
+const setWatermarkToggleCache = (value) => {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(
+      PRIVACY_SETTINGS_CACHE_KEY,
+      JSON.stringify({
+        value: Boolean(value),
+        expiresAt: Date.now() + PRIVACY_SETTINGS_TTL,
+      })
+    );
+  } catch {
+    // Cache is optional.
+  }
+};
+
+export const useWatermarkProtectionEnabled = () => {
+  const cached = useMemo(() => getWatermarkToggleCache(), []);
+  const [enabled, setEnabled] = useState(Boolean(cached.value));
+  const [loading, setLoading] = useState(!cached.expiresAt);
+
+  useEffect(() => {
+    let mounted = true;
+
+    axios
+      .get(PRIVACY_SETTINGS_ENDPOINT)
+      .then((response) => {
+        if (!mounted) return;
+        const nextValue = response.data?.watermarkProtectionEnabled !== false;
+        setEnabled(nextValue);
+        setLoading(false);
+        setWatermarkToggleCache(nextValue);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setEnabled(Boolean(cached.value));
+        setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [cached.value]);
+
+  useEffect(() => {
+    const onPrivacySettingsUpdate = () => {
+      const next = getWatermarkToggleCache();
+      setEnabled(Boolean(next.value));
+    };
+
+    window.addEventListener("storage", onPrivacySettingsUpdate);
+    window.addEventListener("security-privacy-mode", onPrivacySettingsUpdate);
+    window.addEventListener("security-watermark-settings", onPrivacySettingsUpdate);
+
+    return () => {
+      window.removeEventListener("storage", onPrivacySettingsUpdate);
+      window.removeEventListener("security-privacy-mode", onPrivacySettingsUpdate);
+      window.removeEventListener("security-watermark-settings", onPrivacySettingsUpdate);
+    };
+  }, []);
+
+  return { enabled, loading };
+};
 
 export const useSensitiveContentProtection = ({
   enabled = true,
@@ -256,42 +423,73 @@ export const ConsentModal = ({
 
 export const PrivacyWatermark = ({
   lines = [],
+  watermarkId = "",
+  enabled = true,
   blurred = false,
   className = "",
   variant = "default",
+  density = "dense",
 }) => {
   const resolvedLines = useMemo(() => {
     const cleaned = lines.map((line) => String(line || "").trim()).filter(Boolean);
     return cleaned.length ? cleaned : [WARNING_TEXT];
   }, [lines]);
 
-  const items = useMemo(() => {
-    const base = resolvedLines.join(" | ");
-    return new Array(8).fill(null).map((_, index) => ({
-      text: base,
-      top: `${(index * 13) % 82}%`,
-      left: `${(index * 17) % 74}%`,
-      delay: `${index * -1.7}s`,
-      duration: `${13 + index}s`,
-    }));
-  }, [resolvedLines]);
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+
+    const interval = window.setInterval(() => {
+      setFrame((current) => (current + 1) % 1000);
+    }, variant === "call" || variant === "live" ? 1500 : 2200);
+
+    return () => window.clearInterval(interval);
+  }, [enabled, variant]);
+
+  const items = useMemo(
+    () => buildWatermarkItems({
+      lines: resolvedLines,
+      seedText: `${watermarkId || "watermark"}:${variant}`,
+      frame,
+      density,
+    }),
+    [density, frame, resolvedLines, variant, watermarkId]
+  );
+
+  if (!enabled && !blurred) return null;
 
   return (
-    <div className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`}>
-      {items.map((item, index) => (
-        <div
-          key={`${item.text}-${index}`}
-          className={`absolute select-none whitespace-nowrap rounded-full border border-white/15 bg-slate-950/35 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.35em] text-white/70 shadow-lg shadow-black/20 backdrop-blur-md ${variant === "default" ? "privacy-watermark-float" : "privacy-watermark-sweep"}`}
-          style={{
-            top: item.top,
-            left: item.left,
-            animationDelay: item.delay,
-            animationDuration: item.duration,
-          }}
-        >
-          {item.text}
-        </div>
-      ))}
+    <div className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`} aria-hidden="true">
+      <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-black/10" />
+      {enabled &&
+        items.map((item, index) => (
+          <div
+            key={`${item.text}-${index}`}
+            className={`absolute select-none whitespace-nowrap rounded-full border border-white/15 bg-slate-950/30 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.35em] text-white/75 shadow-lg shadow-black/25 backdrop-blur-md mix-blend-screen privacy-watermark-drift`}
+            style={{
+              top: item.top,
+              left: item.left,
+              opacity: item.style.opacity,
+              animationDelay: item.style.animationDelay,
+              animationDuration: item.style.animationDuration,
+              "--wm-scale": item.style["--wm-scale"],
+              "--wm-rotation": item.style["--wm-rotation"],
+              "--wm-x1": item.style["--wm-x1"],
+              "--wm-y1": item.style["--wm-y1"],
+              "--wm-x2": item.style["--wm-x2"],
+              "--wm-y2": item.style["--wm-y2"],
+              "--wm-x3": item.style["--wm-x3"],
+              "--wm-y3": item.style["--wm-y3"],
+              "--wm-blur": item.style["--wm-blur"],
+              "--wm-z": item.style["--wm-z"],
+              filter: `blur(${item.style["--wm-blur"]})`,
+              zIndex: Number(item.style["--wm-z"]),
+            }}
+          >
+            {item.text}
+          </div>
+        ))}
       {blurred && <div className="absolute inset-0 bg-slate-950/65 backdrop-blur-[18px]" />}
     </div>
   );
@@ -305,6 +503,8 @@ export const SecureMediaImage = ({
   imageClassName = "",
   fallbackClassName = "",
   watermarkLines = [],
+  watermarkId = "",
+  watermarkEnabled = true,
   signed = true,
   onClick,
   title,
@@ -348,7 +548,15 @@ export const SecureMediaImage = ({
           onError={() => setBroken(true)}
         />
       )}
-      {watermarkLines.length > 0 ? <PrivacyWatermark lines={watermarkLines} /> : null}
+      {watermarkLines.length > 0 ? (
+        <PrivacyWatermark
+          lines={watermarkLines}
+          watermarkId={watermarkId || displayName}
+          enabled={watermarkEnabled}
+          variant="media"
+          density="medium"
+        />
+      ) : null}
     </div>
   );
 };

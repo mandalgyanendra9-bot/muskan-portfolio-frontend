@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import {
   ConsentModal,
   PrivacyWatermark,
+  useWatermarkProtectionEnabled,
   useSensitiveContentProtection,
 } from "../components/SensitiveContentProtection";
 
@@ -46,6 +47,7 @@ const VideoCall = () => {
   const [error, setError] = useState("");
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [reporting, setReporting] = useState(false);
+  const { enabled: watermarkEnabled } = useWatermarkProtectionEnabled();
 
   const bookingStart = booking?.slotStart ? new Date(booking.slotStart).getTime() : 0;
   const bookingEnd = booking?.slotEnd ? new Date(booking.slotEnd).getTime() : 0;
@@ -77,14 +79,15 @@ const VideoCall = () => {
     otherParticipant?.mobile ||
     otherParticipant?.contactNumber ||
     "Phone not available";
+  const viewerContact = [user?.email, user?.phone || user?.phoneNumber].filter(Boolean).join(" | ") || "No email/phone";
   const watermarkLines = useMemo(
     () => [
       user?.name || "Viewer",
-      user?.email || user?.phone || user?.phoneNumber || "No email/phone",
+      viewerContact,
       booking?._id ? `Booking ${booking._id}` : "Session preview",
       new Date(nowTick).toLocaleString(),
     ],
-    [booking?._id, nowTick, user?.email, user?.name, user?.phone, user?.phoneNumber]
+    [booking?._id, nowTick, user?.email, user?.name, user?.phone, user?.phoneNumber, viewerContact]
   );
   const protectionScope = booking ? `video-call:${roomId}` : "video-call";
   const protection = useSensitiveContentProtection({
@@ -560,7 +563,14 @@ const VideoCall = () => {
           ref={meetingContainerRef}
           className="privacy-sensitive-surface h-full w-full"
         />
-        <PrivacyWatermark lines={watermarkLines} blurred={protection.blurred} />
+        <PrivacyWatermark
+          lines={watermarkLines}
+          watermarkId={booking?._id || roomId}
+          enabled={watermarkEnabled}
+          blurred={protection.blurred}
+          variant="call"
+          density="dense"
+        />
       </div>
       {ending && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
