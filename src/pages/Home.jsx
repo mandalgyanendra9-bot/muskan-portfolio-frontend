@@ -7,11 +7,11 @@ import { Link, useNavigate } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 
-const API_URL = import.meta.env.VITE_API_URL || "";
+const API_URL = import.meta.env.VITE_API_URL || "https://muskan-portfolio-backend.onrender.com";
 
 const getAssetUrl = (path, fallback) => {
   if (!path) return fallback;
-  return path.startsWith("http") ? path : `${API_URL}${path}`;
+  return path.startsWith("http") ? path : `${API_URL}${path.startsWith("/") ? path : `/${path}`}`;
 };
 
 const premiumFeatures = [

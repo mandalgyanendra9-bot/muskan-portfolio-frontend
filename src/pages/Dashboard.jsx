@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
+import { resolveProfilePhotoUrl } from "../utils/profilePhoto";
 
 const money = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -469,7 +470,7 @@ const Dashboard = () => {
               
               <div className="flex items-center gap-6 text-center md:text-left flex-col md:flex-row">
                 <img
-                  src={user.profileImage ? `${import.meta.env.VITE_API_URL}${user.profileImage}` : "https://via.placeholder.com/150"}
+                  src={resolveProfilePhotoUrl(user) || "https://via.placeholder.com/150"}
                   alt={user.name}
                   className="w-24 h-24 rounded-full object-cover border-4 border-white/10 shadow-xl"
                 />
@@ -602,7 +603,7 @@ const Dashboard = () => {
                           <div key={b._id} className="glass p-8 rounded-[2rem] border-white/5 flex flex-col md:flex-row justify-between items-center gap-6 hover:border-primary-500/20 transition-all">
                             <div className="flex items-center gap-4 flex-1">
                               <img
-                                src={b.client?.profileImage ? `${import.meta.env.VITE_API_URL}${b.client.profileImage}` : "https://via.placeholder.com/100"}
+                                src={resolveProfilePhotoUrl(b.client) || "https://via.placeholder.com/100"}
                                 alt={b.client?.name}
                                 className="w-16 h-16 rounded-full object-cover border border-white/10"
                               />
@@ -985,7 +986,7 @@ const Dashboard = () => {
                           <div key={b._id} className="glass p-8 rounded-[2rem] border-white/5 flex flex-col md:flex-row justify-between items-center gap-6 hover:border-primary-500/20 transition-all">
                             <div className="flex items-center gap-4 flex-1">
                               <img
-                                  src={b.expert?.profileImage ? `${import.meta.env.VITE_API_URL}${b.expert.profileImage}` : "https://via.placeholder.com/100"}
+                                  src={resolveProfilePhotoUrl(b.expert) || "https://via.placeholder.com/100"}
                                   alt={b.expert?.name}
                                   className="w-16 h-16 rounded-full object-cover border border-white/10"
                                 />
@@ -1087,7 +1088,7 @@ const Dashboard = () => {
                         
                         <div className="w-24 h-24 rounded-full border-2 border-primary-500/20 mb-4 p-1">
                           <img
-                            src={expert.profileImage ? `${import.meta.env.VITE_API_URL}${expert.profileImage}` : "https://via.placeholder.com/150"}
+                            src={resolveProfilePhotoUrl(expert) || "https://via.placeholder.com/150"}
                             alt={expert.name}
                             className="w-full h-full object-cover rounded-full"
                           />

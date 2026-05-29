@@ -5,6 +5,8 @@ import toast from "react-hot-toast";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
+import ProfileAvatar from "../components/ProfileAvatar";
+import { resolveProfilePhotoUrl } from "../utils/profilePhoto";
 
 const API_ROOT = import.meta.env.VITE_API_URL || "http://localhost:5000";
 const API_BASE = `${API_ROOT}/api`;
@@ -49,10 +51,7 @@ const capitalize = (value) => {
 };
 
 const getAvatarUrl = (user = {}) => {
-  const candidate = user.profileImageUrl || user.profilePhotoUrl || user.profilePhoto || user.profileImage || "";
-  if (!candidate) return "";
-  if (/^https?:\/\//i.test(candidate)) return candidate;
-  return `${API_ROOT}${candidate.startsWith("/") ? candidate : `/${candidate}`}`;
+  return resolveProfilePhotoUrl(user);
 };
 
 const getRoleKey = (user = {}) => {
@@ -557,7 +556,7 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
                       <table className="w-full min-w-[1180px] text-left text-sm">
                         <thead className="bg-white/5 text-xs uppercase tracking-wide text-slate-400">
                           <tr>
-                            <th className="p-4">Avatar</th>
+                            <th className="p-4">Avatar / Photo</th>
                             <th className="p-4">User</th>
                             <th className="p-4">Role</th>
                             <th className="p-4">Verification</th>
@@ -1013,13 +1012,13 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
                   <aside className="space-y-5">
                     <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.03] p-6 text-center">
                       <div className="mx-auto flex h-40 w-40 items-center justify-center overflow-hidden rounded-full border-4 border-white/10 bg-white/5">
-                        {profileAvatar ? (
-                          <img src={profileAvatar} alt={profileData.name || "User"} className="h-full w-full object-cover" />
-                        ) : (
-                          <span className="text-4xl font-extrabold text-primary-300">
-                            {(profileData.name || "U").charAt(0).toUpperCase()}
-                          </span>
-                        )}
+                        <ProfileAvatar
+                          user={profileData}
+                          src={profileAvatar}
+                          className="h-full w-full"
+                          imageClassName="h-full w-full object-cover"
+                          fallbackClassName="flex h-full w-full items-center justify-center bg-primary-500/15 text-4xl font-extrabold text-primary-300"
+                        />
                       </div>
                       <h3 className="mt-5 text-2xl font-extrabold text-white">{profileData.name || "Unknown User"}</h3>
                       <p className="mt-1 text-sm text-slate-400">{profileData.email || "No email"}</p>
@@ -1036,12 +1035,14 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
                   </aside>
 
                   <section className="space-y-6">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <InfoCard label="Department" value={profileData.department || "Not set"} />
-                      <InfoCard label="Designation" value={profileData.designation || "Not set"} />
-                      <InfoCard label="Qualification" value={profileData.qualification || "Not set"} />
-                      <InfoCard label="Role" value={getRoleLabel(profileData)} />
-                    </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <InfoCard label="Department" value={profileData.department || "Not set"} />
+                        <InfoCard label="Designation" value={profileData.designation || "Not set"} />
+                        <InfoCard label="Qualification" value={profileData.qualification || "Not set"} />
+                        <InfoCard label="Role" value={getRoleLabel(profileData)} />
+                        <InfoCard label="Status" value={profileData.isBlocked ? "Blocked" : "Active"} />
+                        <InfoCard label="Verified" value={profileData.isEmailVerified ? "Email verified" : "Email not verified"} />
+                      </div>
 
                     <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5">
                       <p className="text-xs font-bold uppercase tracking-[0.25em] text-slate-500">Research Interests</p>
@@ -1125,22 +1126,15 @@ const Toolbar = ({ title, value, onChange, placeholder, compact = false }) => (
 
 const UserMini = ({ user = {}, large = false }) => {
   const safeUser = user || {};
-  const avatar = getAvatarUrl(safeUser);
-  const initial = (safeUser.name || "U").charAt(0).toUpperCase();
 
   return (
     <div className={`flex min-w-0 items-center gap-3 ${large ? "items-start" : ""}`}>
-      {avatar ? (
-        <img
-          src={avatar}
-          alt={safeUser.name || "User"}
-          className={`${large ? "h-14 w-14" : "h-10 w-10"} rounded-lg border border-white/10 object-cover`}
-        />
-      ) : (
-        <div className={`${large ? "h-14 w-14 text-lg" : "h-10 w-10 text-sm"} flex shrink-0 items-center justify-center rounded-lg border border-white/10 bg-primary-500/15 font-bold text-primary-200`}>
-          {initial}
-        </div>
-      )}
+      <ProfileAvatar
+        user={safeUser}
+        className={`${large ? "h-14 w-14" : "h-10 w-10"} shrink-0 rounded-lg border border-white/10`}
+        imageClassName="h-full w-full rounded-lg object-cover"
+        fallbackClassName={`${large ? "h-14 w-14 text-lg" : "h-10 w-10 text-sm"} flex shrink-0 items-center justify-center rounded-lg border border-white/10 bg-primary-500/15 font-bold text-primary-200`}
+      />
       <div className="min-w-0">
         <p className="truncate font-bold text-white">{safeUser.name || "Unknown user"}</p>
         <p className="truncate text-xs text-slate-500">{safeUser.email || safeUser.title || "No email"}</p>
@@ -1150,19 +1144,13 @@ const UserMini = ({ user = {}, large = false }) => {
 };
 
 const UserAvatar = ({ user = {} }) => {
-  const avatar = getAvatarUrl(user);
-  const initial = (user?.name || "U").charAt(0).toUpperCase();
-
-  return avatar ? (
-    <img
-      src={avatar}
-      alt={user?.name || "User"}
-      className="h-12 w-12 rounded-2xl border border-white/10 object-cover"
+  return (
+    <ProfileAvatar
+      user={user}
+      className="h-12 w-12 rounded-2xl border border-white/10"
+      imageClassName="h-full w-full rounded-2xl object-cover"
+      fallbackClassName="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-primary-500/15 font-bold text-primary-200"
     />
-  ) : (
-    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-primary-500/15 font-bold text-primary-200">
-      {initial}
-    </div>
   );
 };
 

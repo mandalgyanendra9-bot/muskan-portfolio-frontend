@@ -8,11 +8,11 @@ import { ProjectSkeleton } from "../components/Skeleton";
 import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 
-const API_URL = import.meta.env.VITE_API_URL || "";
+const API_URL = import.meta.env.VITE_API_URL || "https://muskan-portfolio-backend.onrender.com";
 
 const getAssetUrl = (path, fallback) => {
   if (!path) return fallback;
-  return path.startsWith("http") ? path : `${API_URL}${path}`;
+  return path.startsWith("http") ? path : `${API_URL}${path.startsWith("/") ? path : `/${path}`}`;
 };
 
 const Projects = () => {

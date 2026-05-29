@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
+import ProfileAvatar from "./ProfileAvatar";
 
 const Navbar = () => {
   const { user, logout } = useAuth();
@@ -89,11 +90,12 @@ const Navbar = () => {
               {/* Avatar → Profile Page */}
               <Link to="/profile" className="relative group">
                 <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border-2 border-primary-500/50 group-hover:border-primary-500 transition-all overflow-hidden bg-white/5">
-                  {user.profileImage ? (
-                    <img src={user.profileImage.startsWith("http") ? user.profileImage : `${import.meta.env.VITE_API_URL}${user.profileImage}`} alt="Profile" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full bg-primary-500/20 flex items-center justify-center text-primary-400 font-bold text-sm">{user.name?.[0]?.toUpperCase()}</div>
-                  )}
+                  <ProfileAvatar
+                    user={user}
+                    className="w-full h-full"
+                    imageClassName="w-full h-full object-cover"
+                    fallbackClassName="w-full h-full bg-primary-500/20 flex items-center justify-center text-primary-400 font-bold text-sm"
+                  />
                 </div>
                 {/* Online indicator */}
                 <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-[#0f172a] bg-emerald-500" />

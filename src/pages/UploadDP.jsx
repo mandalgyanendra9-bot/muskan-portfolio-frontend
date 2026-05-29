@@ -2,6 +2,7 @@ import { useState } from "react";
 import axios from "axios";
 import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
+import { resolveProfilePhotoUrl } from "../utils/profilePhoto";
 
 function UploadDP() {
   const [image, setImage] = useState(null);
@@ -42,12 +43,16 @@ function UploadDP() {
         }
       );
 
-      const imageUrl = `${import.meta.env.VITE_API_URL}${res.data.imageUrl}`;
+      const imageUrl = resolveProfilePhotoUrl(res.data.profilePhotoUrl || res.data.imageUrl || res.data.user);
       
       // Update user in localStorage
       const user = JSON.parse(localStorage.getItem("user"));
       if (user) {
+        user.profilePhotoUrl = imageUrl;
         user.profileImage = imageUrl;
+        user.profilePhoto = imageUrl;
+        user.photoUrl = imageUrl;
+        user.avatar = imageUrl;
         localStorage.setItem("user", JSON.stringify(user));
       }
       
@@ -112,4 +117,4 @@ function UploadDP() {
   );
 }
 
-export default UploadDP;
+export default UploadDP;

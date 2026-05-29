@@ -9,11 +9,11 @@ import SEO from "../components/SEO";
 import toast from "react-hot-toast";
 import BookingModal from "../components/BookingModal";
 
-const API_URL = import.meta.env.VITE_API_URL || "";
+const API_URL = import.meta.env.VITE_API_URL || "https://muskan-portfolio-backend.onrender.com";
 
 const getAssetUrl = (path, fallback) => {
   if (!path) return fallback;
-  return path.startsWith("http") ? path : `${API_URL}${path}`;
+  return path.startsWith("http") ? path : `${API_URL}${path.startsWith("/") ? path : `/${path}`}`;
 };
 
 const Experts = () => {

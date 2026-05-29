@@ -6,6 +6,7 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 import { useAuth } from "../context/AuthContext";
+import { resolveProfilePhotoUrl } from "../utils/profilePhoto";
 
 const aiFeatures = [
   { title: "AI Recommendation System", text: "Rank experts by skills, category, rating, availability, and budget." },
@@ -120,7 +121,7 @@ const AIFeatures = () => {
     <div key={expert._id} className="glass p-6 rounded-[2rem] border-white/5">
       <div className="flex items-center gap-4">
         <img
-          src={expert.profileImage ? `${import.meta.env.VITE_API_URL}${expert.profileImage}` : "https://via.placeholder.com/120"}
+          src={resolveProfilePhotoUrl(expert) || "https://via.placeholder.com/120"}
           alt={expert.name}
           className="w-14 h-14 rounded-full object-cover border border-white/10"
         />

@@ -7,7 +7,7 @@ import API from "../services/api";
 import Navbar from "../components/Navbar";
 import "./Messages.css";
 
-const API_URL = import.meta.env.VITE_API_URL || "";
+const API_URL = import.meta.env.VITE_API_URL || "https://muskan-portfolio-backend.onrender.com";
 
 const getAuthHeaders = (extra = {}) => {
   const token = localStorage.getItem("token");
@@ -22,7 +22,7 @@ const idOf = (value) => {
 
 const getAssetUrl = (path) => {
   if (!path) return "";
-  return path.startsWith("http") ? path : `${API_URL}${path}`;
+  return path.startsWith("http") ? path : `${API_URL}${path.startsWith("/") ? path : `/${path}`}`;
 };
 
 const MessagesContent = () => {

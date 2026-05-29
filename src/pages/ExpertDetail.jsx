@@ -7,6 +7,7 @@ import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 import BookingModal from "../components/BookingModal";
 import toast from "react-hot-toast";
+import { resolveProfilePhotoUrl } from "../utils/profilePhoto";
 
 const getAudienceId = (item) => (typeof item === "string" ? item : item?._id);
 
@@ -153,7 +154,7 @@ const ExpertDetail = () => {
           <div className="flex flex-col md:flex-row gap-10 items-center md:items-start mt-4">
             <div className="relative">
               <img 
-                src={expert.profileImage ? `${import.meta.env.VITE_API_URL}${expert.profileImage}` : "https://via.placeholder.com/200"} 
+                src={resolveProfilePhotoUrl(expert) || "https://via.placeholder.com/200"} 
                 alt={expert.name} 
                 className="w-48 h-48 rounded-full object-cover border-4 border-white/10 shadow-2xl"
               />
@@ -416,7 +417,7 @@ const ExpertDetail = () => {
                   <div className="space-y-4">
                     <div className="flex items-center gap-4">
                       <img
-                        src={r.client?.profileImage ? `${import.meta.env.VITE_API_URL}${r.client.profileImage}` : "https://via.placeholder.com/80"}
+                        src={resolveProfilePhotoUrl(r.client) || "https://via.placeholder.com/80"}
                         alt={r.client?.name}
                         className="w-12 h-12 rounded-full object-cover border border-white/10"
                       />

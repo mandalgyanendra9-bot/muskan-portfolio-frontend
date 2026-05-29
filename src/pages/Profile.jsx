@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import API from "../services/api";
 import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
+import ProfileAvatar from "../components/ProfileAvatar";
+import { resolveProfilePhotoUrl } from "../utils/profilePhoto";
 
 const SKILL_SUGGESTIONS = ["React", "Node.js", "Python", "MongoDB", "TypeScript", "Next.js", "Vue", "Angular", "Django", "Laravel", "Flutter", "AWS", "Docker", "GraphQL", "SQL"];
 
@@ -213,8 +215,6 @@ const Profile = () => {
     }
   };
 
-  const avatarSrc = imagePreview || (user?.profileImage ? (user.profileImage.startsWith("http") ? user.profileImage : `${import.meta.env.VITE_API_URL}${user.profileImage}`) : null);
-
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
@@ -235,13 +235,13 @@ const Profile = () => {
               onClick={() => fileRef.current?.click()}
             >
               <div className={`w-36 h-36 rounded-full border-4 ${dragOver ? "border-primary-500" : "border-white/10"} overflow-hidden shadow-2xl transition-all`}>
-                {avatarSrc ? (
-                  <img src={avatarSrc} alt="Avatar" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-primary-500/20 to-purple-500/20 flex items-center justify-center text-5xl font-bold text-primary-400">
-                    {user?.name?.[0]?.toUpperCase() || "?"}
-                  </div>
-                )}
+                <ProfileAvatar
+                  user={user}
+                  src={imagePreview || resolveProfilePhotoUrl(user)}
+                  className="w-full h-full"
+                  imageClassName="w-full h-full object-cover"
+                  fallbackClassName="w-full h-full bg-gradient-to-br from-primary-500/20 to-purple-500/20 flex items-center justify-center text-5xl font-bold text-primary-400"
+                />
               </div>
               <div className="absolute inset-0 rounded-full bg-black/50 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <svg className="w-7 h-7 text-white mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -575,8 +575,8 @@ const Profile = () => {
                 <div key={r._id} className="glass p-6 rounded-[1.5rem] border-white/5 hover:border-white/10 transition-all">
                   <div className="flex items-center gap-4 mb-4">
                     <div className="w-12 h-12 rounded-full overflow-hidden border border-white/10 flex-shrink-0">
-                      {r.client?.profileImage ? (
-                        <img src={r.client.profileImage.startsWith("http") ? r.client.profileImage : `${import.meta.env.VITE_API_URL}${r.client.profileImage}`} alt={r.client.name} className="w-full h-full object-cover" />
+                      {resolveProfilePhotoUrl(r.client) ? (
+                        <img src={resolveProfilePhotoUrl(r.client)} alt={r.client.name} className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full bg-primary-500/20 flex items-center justify-center text-primary-400 font-bold">{r.client?.name?.[0]?.toUpperCase()}</div>
                       )}
