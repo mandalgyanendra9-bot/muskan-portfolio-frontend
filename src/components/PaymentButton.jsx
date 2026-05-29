@@ -71,13 +71,22 @@ const PaymentButton = ({ bookingData, onSuccess }) => {
       );
       currentBookingId = data.booking?._id || "";
       currentOrderId = data.orderId || "";
+      const bookingId = data.booking?._id || currentBookingId;
 
       await loadRazorpayCheckout();
 
-      const key = data.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID;
+      const key = data.keyId;
       if (!key) {
         throw new Error("Platform Razorpay key is missing");
       }
+
+      const isTestMode = String(data.keyMode || key).startsWith("rzp_test_") || data.keyMode === "test";
+      console.info("Razorpay booking order response", {
+        orderId: data.orderId,
+        amount: data.amount,
+        currency: data.currency,
+        keyMode: data.keyMode || (isTestMode ? "test" : "live"),
+      });
 
       const options = {
         key,
@@ -108,12 +117,16 @@ const PaymentButton = ({ bookingData, onSuccess }) => {
             },
           },
         },
+        notes: {
+          booking_id: bookingId,
+          order_id: data.orderId || "",
+        },
         handler: async (response) => {
           try {
             const verifyRes = await axios.post(
               `${import.meta.env.VITE_API_URL}/api/bookings/verify-payment`,
               {
-                bookingId: data.booking._id,
+                bookingId,
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
@@ -143,7 +156,7 @@ const PaymentButton = ({ bookingData, onSuccess }) => {
           ondismiss: async () => {
             try {
               if (!outcomeHandledRef.current) {
-                await markPaymentOutcome(data.booking._id, data.orderId, "cancelled", "Checkout dismissed by user");
+                await markPaymentOutcome(bookingId, data.orderId, "cancelled", "Checkout dismissed by user");
               }
             } catch (err) {
               console.error("Failed to mark payment as cancelled:", err);
@@ -160,7 +173,7 @@ const PaymentButton = ({ bookingData, onSuccess }) => {
         try {
           if (!outcomeHandledRef.current) {
             await markPaymentOutcome(
-              data.booking._id,
+              bookingId,
               data.orderId,
               "failed",
               response?.error?.description || response?.error?.reason || "Razorpay payment failed"
@@ -224,6 +237,9 @@ const PaymentButton = ({ bookingData, onSuccess }) => {
           <h2 className="text-2xl font-black text-white tracking-wide">SECURE RAZORPAY CHECKOUT</h2>
           <p className="text-slate-400 text-sm max-w-sm mt-2 leading-relaxed">
             Please complete payment in Razorpay Checkout. Your booking confirms only after payment is verified.
+          </p>
+          <p className="mt-3 max-w-md text-xs leading-6 text-amber-200/90">
+            UPI QR is generated inside Razorpay Checkout only. No custom QR is rendered by this app. In Razorpay test mode, some real UPI apps may not scan or complete the payment, so use the test flow inside checkout if that happens.
           </p>
         </div>
       )}
