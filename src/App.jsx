@@ -30,6 +30,9 @@ const Billing = lazy(() => import("./pages/Billing"));
 const Live = lazy(() => import("./pages/Live"));
 const AIFeatures = lazy(() => import("./pages/AIFeatures"));
 const Security = lazy(() => import("./pages/Security"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Terms = lazy(() => import("./pages/Terms"));
+const Refund = lazy(() => import("./pages/Refund"));
 
 const AGE_VERIFIED_STORAGE_KEY = "ageVerified18Plus";
 const AGE_VERIFIED_COOKIE_KEY = "ageVerified18Plus";
@@ -101,6 +104,9 @@ function App() {
             <Route path="/ai" element={<AIFeatures />} />
             <Route path="/security" element={<Security />} />
             <Route path="/contact" element={<Contact />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/refund" element={<Refund />} />
 
             {/* Auth */}
             <Route path="/login" element={<Login />} />

@@ -4,28 +4,7 @@
     <loc>https://muskan-portfolio-frontend.vercel.app/</loc>
   </url>
   <url>
-    <loc>https://muskan-portfolio-frontend.vercel.app/about</loc>
-  </url>
-  <url>
-    <loc>https://muskan-portfolio-frontend.vercel.app/projects</loc>
-  </url>
-  <url>
-    <loc>https://muskan-portfolio-frontend.vercel.app/blog</loc>
-  </url>
-  <url>
     <loc>https://muskan-portfolio-frontend.vercel.app/experts</loc>
-  </url>
-  <url>
-    <loc>https://muskan-portfolio-frontend.vercel.app/contact</loc>
-  </url>
-  <url>
-    <loc>https://muskan-portfolio-frontend.vercel.app/live</loc>
-  </url>
-  <url>
-    <loc>https://muskan-portfolio-frontend.vercel.app/ai</loc>
-  </url>
-  <url>
-    <loc>https://muskan-portfolio-frontend.vercel.app/security</loc>
   </url>
   <url>
     <loc>https://muskan-portfolio-frontend.vercel.app/login</loc>
@@ -34,6 +13,12 @@
     <loc>https://muskan-portfolio-frontend.vercel.app/register</loc>
   </url>
   <url>
-    <loc>https://muskan-portfolio-frontend.vercel.app/dashboard</loc>
+    <loc>https://muskan-portfolio-frontend.vercel.app/privacy</loc>
+  </url>
+  <url>
+    <loc>https://muskan-portfolio-frontend.vercel.app/terms</loc>
+  </url>
+  <url>
+    <loc>https://muskan-portfolio-frontend.vercel.app/refund</loc>
   </url>
 </urlset>
