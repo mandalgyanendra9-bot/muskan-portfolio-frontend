@@ -4,9 +4,15 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { ZegoUIKitPrebuilt } from "@zegocloud/zego-uikit-prebuilt";
 import toast from "react-hot-toast";
+import {
+  ConsentModal,
+  PrivacyWatermark,
+  useSensitiveContentProtection,
+} from "../components/SensitiveContentProtection";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 const CALL_JOIN_EARLY_MINUTES = 10;
+const CONSENT_STORAGE_PREFIX = "video-call-consent";
 
 const formatDuration = (totalSeconds = 0) => {
   const safeSeconds = Math.max(0, Math.floor(totalSeconds));
@@ -38,6 +44,8 @@ const VideoCall = () => {
   const [ending, setEnding] = useState(false);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [error, setError] = useState("");
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [reporting, setReporting] = useState(false);
 
   const bookingStart = booking?.slotStart ? new Date(booking.slotStart).getTime() : 0;
   const bookingEnd = booking?.slotEnd ? new Date(booking.slotEnd).getTime() : 0;
@@ -54,6 +62,39 @@ const VideoCall = () => {
   const joinCountdown = Math.max(0, Math.ceil((joinOpensAt - nowTick) / 1000));
   const callCountdown = Math.max(0, Math.ceil((bookingEnd - nowTick) / 1000));
   const isAfterBookedTime = bookingEnd > 0 && nowTick >= bookingEnd;
+  const consentStorageKey = booking ? `${CONSENT_STORAGE_PREFIX}:${booking._id}` : "";
+  const otherParticipant = booking
+    ? String(booking.client?._id || booking.client) === String(user?._id)
+      ? booking.expert
+      : booking.client
+    : null;
+  const otherParticipantId = otherParticipant?._id || otherParticipant;
+  const otherParticipantName = otherParticipant?.name || "Other participant";
+  const otherParticipantEmail = otherParticipant?.email || "No email available";
+  const otherParticipantContact =
+    otherParticipant?.phone ||
+    otherParticipant?.phoneNumber ||
+    otherParticipant?.mobile ||
+    otherParticipant?.contactNumber ||
+    "Phone not available";
+  const watermarkLines = useMemo(
+    () => [
+      user?.name || "Viewer",
+      user?.email || user?.phone || user?.phoneNumber || "No email/phone",
+      booking?._id ? `Booking ${booking._id}` : "Session preview",
+      new Date(nowTick).toLocaleString(),
+    ],
+    [booking?._id, nowTick, user?.email, user?.name, user?.phone, user?.phoneNumber]
+  );
+  const protectionScope = booking ? `video-call:${roomId}` : "video-call";
+  const protection = useSensitiveContentProtection({
+    enabled: Boolean(booking) && consentAccepted,
+    scope: protectionScope,
+    bookingId: booking?._id,
+    targetUserId: otherParticipantId,
+    page: "video-call",
+    details: booking?.notes || booking?.expert?.name || "Booked consultation",
+  });
 
   const meetingLabel = useMemo(() => {
     if (!booking) return "Loading meeting";
@@ -107,6 +148,92 @@ const VideoCall = () => {
     }
   }, [navigate, roomId]);
 
+  const acceptConsent = useCallback(() => {
+    if (!consentStorageKey) return;
+    window.sessionStorage.setItem(consentStorageKey, "true");
+    setConsentAccepted(true);
+    toast.success("Privacy consent saved for this session");
+  }, [consentStorageKey]);
+
+  const declineConsent = useCallback(() => {
+    toast("You can join once you accept the privacy terms.", { icon: "info" });
+    navigate("/dashboard", { replace: true });
+  }, [navigate]);
+
+  const markViolation = useCallback(
+    async (action, details) => {
+      if (!booking?._id) return false;
+      try {
+        const token = localStorage.getItem("token");
+        await axios.post(
+          `${API_URL}/api/privacy/violations`,
+          {
+            bookingId: booking._id,
+            targetUserId: otherParticipantId || null,
+            action,
+            details: String(details || "").slice(0, 1000),
+            page: "video-call",
+            source: "web",
+            timestamp: new Date().toISOString(),
+          },
+          { headers: token ? { Authorization: token } : {} }
+        );
+        return true;
+      } catch (requestError) {
+        console.error(requestError);
+        return false;
+      }
+    },
+    [booking?._id, otherParticipantId]
+  );
+
+  const handleReportUser = useCallback(async () => {
+    if (!booking || !otherParticipantId) return;
+    const reason = window.prompt("Describe the issue or violation:");
+    if (reason === null) return;
+
+    setReporting(true);
+    try {
+      const saved = await markViolation("report_user", reason || "User reported from secure session");
+      if (saved) {
+        toast.success(`${otherParticipantName} reported`);
+      } else {
+        toast.error("Failed to save the report");
+      }
+    } catch (requestError) {
+      toast.error(requestError.response?.data?.message || "Failed to report user");
+    } finally {
+      setReporting(false);
+    }
+  }, [booking, markViolation, otherParticipantId, otherParticipantName]);
+
+  const handleBlockUser = useCallback(async () => {
+    if (!booking || !otherParticipantId) return;
+    const confirmBlock = window.confirm(`Block ${otherParticipantName} for this account and sensitive sessions?`);
+    if (!confirmBlock) return;
+
+    setReporting(true);
+    try {
+      const token = localStorage.getItem("token");
+      const { data } = await axios.post(
+        `${API_URL}/api/privacy/block-user`,
+        {
+          targetUserId: otherParticipantId,
+          bookingId: booking._id,
+          page: "video-call",
+          reason: `Blocked from booking ${booking._id}`,
+        },
+        { headers: token ? { Authorization: token } : {} }
+      );
+      toast.success(data.message || `${otherParticipantName} blocked`);
+      navigate("/dashboard", { replace: true });
+    } catch (requestError) {
+      toast.error(requestError.response?.data?.message || "Failed to block user");
+    } finally {
+      setReporting(false);
+    }
+  }, [booking, navigate, otherParticipantId, otherParticipantName]);
+
   useEffect(() => {
     if (!user) {
       navigate("/login");
@@ -136,6 +263,11 @@ const VideoCall = () => {
   }, [navigate, roomId, user]);
 
   useEffect(() => {
+    if (!consentStorageKey) return;
+    setConsentAccepted(window.sessionStorage.getItem(consentStorageKey) === "true");
+  }, [consentStorageKey]);
+
+  useEffect(() => {
     const timer = window.setInterval(() => {
       setNowTick(Date.now());
     }, 1000);
@@ -151,7 +283,7 @@ const VideoCall = () => {
       return undefined;
     }
 
-    if (isAfterBookedTime || !canJoinNow || zegoRef.current || !meetingContainerRef.current) return undefined;
+    if (isAfterBookedTime || !canJoinNow || !consentAccepted || zegoRef.current || !meetingContainerRef.current) return undefined;
 
     const appID = Number(import.meta.env.VITE_ZEGO_APP_ID) || 1618361093;
     const serverSecret = import.meta.env.VITE_ZEGO_SERVER_SECRET || "87245bdcc3539e0839e44ffc91bbfcb2";
@@ -204,7 +336,7 @@ const VideoCall = () => {
         zegoRef.current = null;
       }
     };
-  }, [booking, callAccess, canJoinNow, completeCall, handleLeaveRoom, isAfterBookedTime, loading, roomId, user?._id, user?.name]);
+  }, [booking, callAccess, canJoinNow, completeCall, consentAccepted, handleLeaveRoom, isAfterBookedTime, loading, roomId, user?._id, user?.name]);
 
   useEffect(() => {
     if (!booking || !callAccess) return undefined;
@@ -325,6 +457,62 @@ const VideoCall = () => {
     );
   }
 
+  if (!consentAccepted) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white">
+        <div className="mx-auto flex min-h-screen max-w-5xl items-center justify-center px-6 py-10">
+          <div className="grid w-full gap-6 rounded-[2rem] border border-white/10 bg-white/5 p-6 lg:grid-cols-[1.05fr_0.95fr] lg:p-8">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.3em] text-primary-300">Secure session check</p>
+              <h1 className="mt-4 text-4xl font-extrabold">{meetingLabel}</h1>
+              <p className="mt-3 text-slate-400">{statusCopy}</p>
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs uppercase tracking-wider text-slate-500">Participant</p>
+                  <p className="mt-2 font-bold text-white">{otherParticipantName}</p>
+                  <p className="mt-1 text-xs text-slate-400">{otherParticipantEmail}</p>
+                  <p className="mt-1 text-xs text-slate-400">{otherParticipantContact}</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs uppercase tracking-wider text-slate-500">Booking</p>
+                  <p className="mt-2 font-mono text-sm font-bold text-amber-300">{booking._id}</p>
+                </div>
+              </div>
+              <p className="mt-6 text-sm text-slate-500">
+                We will not join the room until you confirm the no-recording, no-screenshot, and no-sharing terms.
+              </p>
+            </div>
+            <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-5">
+              <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">Call rules</p>
+              <ul className="mt-4 space-y-3 text-sm text-slate-300">
+                <li className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">No recording is allowed.</li>
+                <li className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">No screenshots or screen sharing are allowed.</li>
+                <li className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">No redistribution or sharing of protected content.</li>
+              </ul>
+              <p className="mt-6 text-xs uppercase tracking-[0.25em] text-slate-500">Select all terms to continue</p>
+              <p className="mt-4 rounded-2xl border border-primary-400/20 bg-primary-500/10 px-4 py-3 text-sm text-slate-200">
+                Use the consent modal to confirm the rules before the room opens.
+              </p>
+              <button
+                type="button"
+                onClick={declineConsent}
+                className="mt-4 w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-bold text-slate-300 transition hover:bg-white/10"
+              >
+                Leave session
+              </button>
+            </div>
+          </div>
+        </div>
+        <ConsentModal
+          open={true}
+          bookingLabel={booking._id}
+          onAccept={acceptConsent}
+          onDecline={declineConsent}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="w-screen h-screen bg-slate-950 flex flex-col items-center justify-center overflow-hidden text-white">
       <div className="w-full bg-slate-900 border-b border-white/5 py-3 px-6 flex flex-wrap items-center justify-between gap-3 z-10">
@@ -339,6 +527,22 @@ const VideoCall = () => {
             {nowTick <= bookingEnd ? `Time left ${formatDuration(callCountdown)}` : "Ending..."}
           </span>
           <button
+            type="button"
+            onClick={handleReportUser}
+            disabled={reporting}
+            className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-bold text-slate-200 transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Report
+          </button>
+          <button
+            type="button"
+            onClick={handleBlockUser}
+            disabled={reporting}
+            className="rounded-full border border-red-500/20 bg-red-500/10 px-4 py-1.5 text-xs font-bold text-red-300 transition-all hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Block
+          </button>
+          <button
             onClick={handleLeaveRoom}
             className="rounded-full border border-red-500/20 bg-red-500/10 px-4 py-1.5 text-xs font-bold text-red-300 transition-all hover:bg-red-500/20"
           >
@@ -351,11 +555,13 @@ const VideoCall = () => {
         {statusCopy}
       </div>
 
-      <div
-        ref={meetingContainerRef}
-        className="flex-grow w-full h-full relative"
-        style={{ width: "100vw", height: "calc(100vh - 102px)" }}
-      />
+      <div className="relative w-full flex-grow" style={{ width: "100vw", height: "calc(100vh - 102px)" }}>
+        <div
+          ref={meetingContainerRef}
+          className="privacy-sensitive-surface h-full w-full"
+        />
+        <PrivacyWatermark lines={watermarkLines} blurred={protection.blurred} />
+      </div>
       {ending && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
           <div className="rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-center">

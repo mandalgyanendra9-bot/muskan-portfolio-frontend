@@ -8,14 +8,10 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 import { useAuth } from "../context/AuthContext";
+import { SecureMediaImage } from "../components/SensitiveContentProtection";
 
 const API_URL = import.meta.env.VITE_API_URL || "https://muskan-portfolio-backend.onrender.com";
 const SOCKET_URL = API_URL || "http://localhost:5000";
-
-const getAssetUrl = (path, fallback) => {
-  if (!path) return fallback;
-  return path.startsWith("http") ? path : `${API_URL}${path.startsWith("/") ? path : `/${path}`}`;
-};
 
 const featureCards = [
   { title: "Live Streaming", text: "Host real-time portfolio sessions and expert talks." },
@@ -443,10 +439,13 @@ const Live = () => {
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <img
-                          src={getAssetUrl(stream.host?.profileImage, "https://via.placeholder.com/120")}
+                        <SecureMediaImage
+                          source={stream.host?.profilePhotoUrl || stream.host?.profileImage || stream.host?.googlePhoto || stream.host?.image || ""}
                           alt={stream.host?.name || "Host"}
-                          className="w-12 h-12 rounded-full object-cover border border-white/10"
+                          className="w-12 h-12 rounded-full border border-white/10"
+                          imageClassName="rounded-full"
+                          fallbackClassName="rounded-full text-xs font-bold text-primary-200 bg-primary-500/15"
+                          signed
                         />
                         <div>
                           <h3 className="text-white font-bold line-clamp-1">{stream.title}</h3>

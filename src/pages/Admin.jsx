@@ -19,6 +19,7 @@ const tabs = [
   { id: "payouts", label: "Payout Management", short: "PY" },
   { id: "settings", label: "Admin Settings", short: "AS" },
   { id: "reports", label: "Reports & Complaints", short: "RC" },
+  { id: "violations", label: "Privacy Violations", short: "VL" },
   { id: "bookings", label: "Booking Management", short: "BM" },
 ];
 
@@ -88,6 +89,10 @@ const getStatusClass = (status) => {
     rejected: "bg-red-500/15 text-red-300 border-red-400/20",
     unpaid: "bg-amber-500/15 text-amber-300 border-amber-400/20",
     refunded: "bg-violet-500/15 text-violet-300 border-violet-400/20",
+    open: "bg-amber-500/15 text-amber-300 border-amber-400/20",
+    reviewed: "bg-sky-500/15 text-sky-300 border-sky-400/20",
+    blocked: "bg-red-500/15 text-red-300 border-red-400/20",
+    dismissed: "bg-slate-500/15 text-slate-300 border-slate-400/20",
     admin: "bg-violet-500/15 text-violet-300 border-violet-400/20",
     expert: "bg-sky-500/15 text-sky-300 border-sky-400/20",
     faculty: "bg-sky-500/15 text-sky-300 border-sky-400/20",
@@ -111,6 +116,7 @@ const Admin = () => {
   const [payouts, setPayouts] = useState([]);
   const [adminSettings, setAdminSettings] = useState({ commissionPercent: 20 });
   const [reports, setReports] = useState([]);
+  const [violations, setViolations] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -123,6 +129,7 @@ const Admin = () => {
   const [payoutSearch, setPayoutSearch] = useState("");
   const [bookingSearch, setBookingSearch] = useState("");
   const [reportSearch, setReportSearch] = useState("");
+  const [violationSearch, setViolationSearch] = useState("");
   const [commissionPercent, setCommissionPercent] = useState(20);
   const [savingSettings, setSavingSettings] = useState(false);
   const [downloadingPayoutReport, setDownloadingPayoutReport] = useState(false);
@@ -134,11 +141,12 @@ const Admin = () => {
       const headers = getAuthHeaders();
 // Remove duplicate state declarations (already defined at top)
 // Fetch payouts along with other admin data
-const [analyticsRes, usersRes, paymentsRes, reportsRes, bookingsRes, payoutsRes, settingsRes] = await Promise.all([
+const [analyticsRes, usersRes, paymentsRes, reportsRes, violationsRes, bookingsRes, payoutsRes, settingsRes] = await Promise.all([
   axios.get(`${API_BASE}/admin/analytics`, { headers }),
   axios.get(`${API_BASE}/admin/users`, { headers }),
   axios.get(`${API_BASE}/admin/payments`, { headers }),
   axios.get(`${API_BASE}/admin/reports`, { headers }),
+  axios.get(`${API_BASE}/admin/violations`, { headers }),
   axios.get(`${API_BASE}/admin/bookings`, { headers }),
   axios.get(`${API_BASE}/admin/payouts`, { headers }),
   axios.get(`${API_BASE}/admin/settings`, { headers }),
@@ -148,6 +156,7 @@ setAnalytics(analyticsRes.data);
 setUsers(usersRes.data);
 setPayments(paymentsRes.data);
 setReports(reportsRes.data);
+setViolations(violationsRes.data);
 setBookings(bookingsRes.data);
 setPayouts(payoutsRes.data);
 setAdminSettings(settingsRes.data);
@@ -336,6 +345,21 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
     );
   };
 
+  const handleUpdateViolation = (violationId, status) => {
+    runAdminAction(
+      () => axios.put(`${API_BASE}/admin/violations/${violationId}/status`, { status }, { headers: getAuthHeaders() }),
+      `Violation marked ${status}`
+    );
+  };
+
+  const handleBlockFromViolation = (violationId) => {
+    if (!window.confirm("Block this user from the violation log?")) return;
+    runAdminAction(
+      () => axios.post(`${API_BASE}/admin/violations/${violationId}/block`, {}, { headers: getAuthHeaders() }),
+      "User blocked from violation log"
+    );
+  };
+
   const experts = useMemo(() => users.filter((user) => ["expert", "faculty"].includes(lower(user.role))), [users]);
 
   const filteredUsers = useMemo(() => {
@@ -386,6 +410,23 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
         .some((field) => lower(field).includes(query))
     );
   }, [reports, reportSearch]);
+
+  const filteredViolations = useMemo(() => {
+    const query = lower(violationSearch);
+    return violations.filter((violation) =>
+      [
+        violation.action,
+        violation.status,
+        violation.page,
+        violation.details,
+        violation.userId?.name,
+        violation.userId?.email,
+        violation.targetUserId?.name,
+        violation.targetUserId?.email,
+        violation.bookingId?._id,
+      ].some((field) => lower(field).includes(query))
+    );
+  }, [violationSearch, violations]);
 
   const filteredBookings = useMemo(() => {
     const query = lower(bookingSearch);
@@ -445,7 +486,7 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-2 md:grid-cols-4 xl:grid-cols-7">
+          <div className="grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-2 md:grid-cols-4 xl:grid-cols-8">
             {tabs.map((tab) => (
               <button
                 type="button"
@@ -917,6 +958,51 @@ setCommissionPercent(settingsRes.data.commissionPercent ?? 20);
                       </div>
                     ))}
                     {filteredReports.length === 0 && <EmptyState text="No reports or complaints found." />}
+                  </div>
+                </section>
+              )}
+
+              {activeTab === "violations" && (
+                <section className="space-y-6">
+                  <Toolbar title="Privacy Violations" value={violationSearch} onChange={setViolationSearch} placeholder="Search action, user, booking..." />
+                  <div className="grid gap-4">
+                    {filteredViolations.map((violation) => (
+                      <div key={violation._id} className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="space-y-3">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <h3 className="text-lg font-bold text-white">{violation.action}</h3>
+                              <StatusBadge status={violation.status || "open"}>{violation.status || "open"}</StatusBadge>
+                              <StatusBadge status="admin">{violation.page || "web"}</StatusBadge>
+                            </div>
+                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                              <InfoCard label="Reported by" value={`${violation.userId?.name || "Unknown"} (${violation.userId?.email || "No email"})`} />
+                              <InfoCard label="Target user" value={`${violation.targetUserId?.name || "Unknown"} (${violation.targetUserId?.email || "No email"})`} />
+                              <InfoCard label="Booking" value={violation.bookingId?._id || "Not linked"} />
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              {violation.timestamp ? formatDate(violation.timestamp) : "No timestamp"}{" "}
+                              {violation.source ? `- ${violation.source}` : ""}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <ActionButton tone="amber" onClick={() => handleUpdateViolation(violation._id, "reviewed")}>
+                              Review
+                            </ActionButton>
+                            <ActionButton tone="red" onClick={() => handleUpdateViolation(violation._id, "dismissed")}>
+                              Dismiss
+                            </ActionButton>
+                            <ActionButton tone="red" onClick={() => handleBlockFromViolation(violation._id)}>
+                              Block User
+                            </ActionButton>
+                          </div>
+                        </div>
+                        <p className="mt-4 rounded-lg border border-white/5 bg-black/10 p-4 text-sm leading-6 text-slate-300">
+                          {violation.details || "No extra details provided."}
+                        </p>
+                      </div>
+                    ))}
+                    {filteredViolations.length === 0 && <EmptyState text="No privacy violations found." />}
                   </div>
                 </section>
               )}

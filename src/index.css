@@ -74,6 +74,63 @@ body.security-privacy-mode canvas {
   -webkit-user-drag: none;
 }
 
+.privacy-sensitive-surface,
+.privacy-sensitive-surface * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.privacy-sensitive-surface img,
+.privacy-sensitive-surface video,
+.privacy-sensitive-surface canvas {
+  pointer-events: auto;
+}
+
+@keyframes privacy-watermark-float {
+  0% {
+    transform: translate3d(0, 0, 0) rotate(-17deg);
+    opacity: 0.45;
+  }
+  25% {
+    transform: translate3d(6%, -4%, 0) rotate(-14deg);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translate3d(-4%, 7%, 0) rotate(-19deg);
+    opacity: 0.55;
+  }
+  75% {
+    transform: translate3d(8%, 2%, 0) rotate(-15deg);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) rotate(-17deg);
+    opacity: 0.45;
+  }
+}
+
+@keyframes privacy-watermark-sweep {
+  0% {
+    transform: translate3d(-8%, -6%, 0) rotate(-16deg);
+  }
+  100% {
+    transform: translate3d(8%, 6%, 0) rotate(-16deg);
+  }
+}
+
+.privacy-watermark-float {
+  animation-name: privacy-watermark-float;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.privacy-watermark-sweep {
+  animation-name: privacy-watermark-sweep;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
 @media print {
   body.security-privacy-mode #root {
     filter: blur(18px);

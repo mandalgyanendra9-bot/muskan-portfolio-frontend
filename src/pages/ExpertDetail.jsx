@@ -7,7 +7,8 @@ import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 import BookingModal from "../components/BookingModal";
 import toast from "react-hot-toast";
-import { resolveProfilePhotoUrl } from "../utils/profilePhoto";
+import { getProfilePhotoCandidate, resolveProfilePhotoUrl } from "../utils/profilePhoto";
+import { SecureMediaImage, PrivacyWatermark, useSensitiveContentProtection } from "../components/SensitiveContentProtection";
 
 const getAudienceId = (item) => (typeof item === "string" ? item : item?._id);
 
@@ -103,6 +104,20 @@ const ExpertDetail = () => {
   const followerCount = expert?.followers?.length || 0;
   const subscriberCount = expert?.subscribers?.length || 0;
   const canViewExclusiveContent = isSubscribed || user?._id === expert?._id || user?.subscriptionPlan === "premium";
+  const protection = useSensitiveContentProtection({
+    enabled: Boolean(expert),
+    scope: `expert-profile:${id}`,
+    targetUserId: expert?._id,
+    page: "expert-detail",
+    details: expert?.name || "Expert profile",
+  });
+  const profileSessionId = `expert-profile-${id}`;
+  const profileWatermarkLines = [
+    user?.name || "Guest viewer",
+    user?.email || user?.phone || "No email/phone",
+    `Session ${profileSessionId}`,
+    new Date().toLocaleString(),
+  ];
 
   if (loading) {
     return (
@@ -153,10 +168,15 @@ const ExpertDetail = () => {
 
           <div className="flex flex-col md:flex-row gap-10 items-center md:items-start mt-4">
             <div className="relative">
-              <img 
-                src={resolveProfilePhotoUrl(expert) || "https://via.placeholder.com/200"} 
-                alt={expert.name} 
-                className="w-48 h-48 rounded-full object-cover border-4 border-white/10 shadow-2xl"
+              <SecureMediaImage
+                source={getProfilePhotoCandidate(expert)}
+                user={expert}
+                alt={expert.name}
+                className="w-48 h-48 rounded-full border-4 border-white/10 shadow-2xl"
+                imageClassName="rounded-full"
+                fallbackClassName="rounded-full bg-white/5 text-3xl font-extrabold text-primary-200"
+                watermarkLines={profileWatermarkLines}
+                signed
               />
               <span className={`absolute bottom-2 right-2 w-5 h-5 rounded-full border-4 border-surface ${expert.isAvailable ? 'bg-emerald-500' : 'bg-slate-500'}`} />
             </div>
@@ -317,7 +337,7 @@ const ExpertDetail = () => {
             <h2 className="text-3xl font-bold text-white mb-8 border-b border-white/10 pb-4 flex items-center gap-3">
               <span>🎬 Intro Reel</span>
             </h2>
-            <div className="relative rounded-[2rem] overflow-hidden border border-white/10 shadow-2xl" style={{ paddingBottom: "56.25%" }}>
+            <div className="privacy-sensitive-surface relative rounded-[2rem] overflow-hidden border border-white/10 shadow-2xl" style={{ paddingBottom: "56.25%" }}>
               <iframe
                 className="absolute inset-0 w-full h-full"
                 src={expert.introVideo.replace("watch?v=", "embed/").replace("youtu.be/", "www.youtube.com/embed/").replace("vimeo.com/", "player.vimeo.com/video/")}
@@ -325,6 +345,7 @@ const ExpertDetail = () => {
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
               />
+              <PrivacyWatermark lines={profileWatermarkLines} blurred={protection.blurred} />
             </div>
           </div>
         )}
@@ -353,13 +374,16 @@ const ExpertDetail = () => {
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {expert.portfolioGallery.map((img, i) => (
-                <div key={i} className="aspect-square rounded-2xl overflow-hidden border border-white/10 group cursor-zoom-in">
-                  <img
-                    src={img.startsWith("http") ? img : `${import.meta.env.VITE_API_URL}${img}`}
-                    alt={`Gallery ${i + 1}`}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                </div>
+                <SecureMediaImage
+                  key={i}
+                  source={img}
+                  alt={`Gallery ${i + 1}`}
+                  className="aspect-square rounded-2xl overflow-hidden border border-white/10 group cursor-zoom-in"
+                  imageClassName="group-hover:scale-105 transition-transform duration-500"
+                  fallbackClassName="text-slate-400 text-sm"
+                  watermarkLines={profileWatermarkLines}
+                  signed
+                />
               ))}
             </div>
           </div>

@@ -1,15 +1,13 @@
 import { useEffect, useState } from "react";
-
-const STORAGE_KEY = "securityPrivacyMode";
-
-const readPrivacyMode = () => localStorage.getItem(STORAGE_KEY) === "true";
+import { isPrivacyShieldEnabled } from "../utils/privacyMode";
 
 const PrivacyShield = () => {
-  const [active, setActive] = useState(readPrivacyMode);
+  const [active, setActive] = useState(() => isPrivacyShieldEnabled());
   const [showOverlay, setShowOverlay] = useState(false);
+  const [warningMessage, setWarningMessage] = useState("Sensitive content is hidden while capture or print actions are detected.");
 
   useEffect(() => {
-    const sync = () => setActive(readPrivacyMode());
+    const sync = () => setActive(isPrivacyShieldEnabled());
     window.addEventListener("storage", sync);
     window.addEventListener("security-privacy-mode", sync);
     return () => {
@@ -24,22 +22,38 @@ const PrivacyShield = () => {
       return undefined;
     }
 
-    const blockDefault = (event) => event.preventDefault();
-    const flashOverlay = () => {
+    const blockDefault = (event) => {
+      event.preventDefault();
+    };
+    const flashOverlay = (message = "Sensitive content is hidden while capture or print actions are detected.") => {
+      setWarningMessage(message);
       setShowOverlay(true);
       window.setTimeout(() => setShowOverlay(false), 1800);
     };
     const handleKeyDown = (event) => {
-      if (event.key === "PrintScreen") flashOverlay();
+      const key = String(event.key || "").toLowerCase();
+      const isScreenshotKey =
+        event.key === "PrintScreen" ||
+        (event.ctrlKey && event.shiftKey && key === "s") ||
+        (event.metaKey && event.shiftKey && key === "s");
+
+      if (isScreenshotKey) {
+        event.preventDefault();
+        flashOverlay("Screenshots/recording are prohibited and may lead to account ban.");
+      }
     };
     const handleBeforePrint = () => setShowOverlay(true);
     const handleAfterPrint = () => setShowOverlay(false);
+    const handleWarningEvent = (event) => {
+      flashOverlay(event.detail?.message || "Screenshots/recording are prohibited and may lead to account ban.");
+    };
 
     document.addEventListener("contextmenu", blockDefault);
     document.addEventListener("dragstart", blockDefault);
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("beforeprint", handleBeforePrint);
     window.addEventListener("afterprint", handleAfterPrint);
+    window.addEventListener("security-privacy-warning", handleWarningEvent);
 
     return () => {
       document.body.classList.remove("security-privacy-mode");
@@ -48,6 +62,7 @@ const PrivacyShield = () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("beforeprint", handleBeforePrint);
       window.removeEventListener("afterprint", handleAfterPrint);
+      window.removeEventListener("security-privacy-warning", handleWarningEvent);
     };
   }, [active]);
 
@@ -63,7 +78,7 @@ const PrivacyShield = () => {
         </div>
         <p className="text-white text-2xl font-extrabold">Privacy shield active</p>
         <p className="text-slate-400 mt-2 text-sm">
-          Sensitive content is hidden while capture or print actions are detected.
+          {warningMessage}
         </p>
       </div>
     </div>
