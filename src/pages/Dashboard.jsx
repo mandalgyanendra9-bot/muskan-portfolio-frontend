@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
@@ -28,6 +28,10 @@ const Dashboard = () => {
   const { user, updateUser, logout } = useAuth();
   const navigate = useNavigate();
   const routerLocation = useLocation();
+  const userRef = useRef(user);
+  const updateUserRef = useRef(updateUser);
+  const payoutFetchCountRef = useRef(0);
+  const didInitialLoadRef = useRef(false);
 
   // Navigation states
   const [activeTab, setActiveTab] = useState("bookings"); // expert tabs: bookings, analytics, profile / client tabs: bookings, favorites, history
@@ -69,6 +73,14 @@ const Dashboard = () => {
 
   const [selectedFile, setSelectedFile] = useState(null);
 
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    updateUserRef.current = updateUser;
+  }, [updateUser]);
+
   // Check if a review needs to be prompted from video call redirect
   useEffect(() => {
     if (routerLocation.state?.reviewBooking) {
@@ -83,10 +95,10 @@ const Dashboard = () => {
   const syncPayoutData = useCallback((data) => {
     setPayoutData(data);
     setPayoutForm({
-      ...getInitialPayoutForm(user),
+      ...getInitialPayoutForm(userRef.current || {}),
       ...(data?.settings || {}),
     });
-  }, [user]);
+  }, []);
 
   // Fetch user profile and bookings
   const fetchData = useCallback(async () => {
@@ -105,7 +117,7 @@ const Dashboard = () => {
           headers: { Authorization: token }
         }),
       ]);
-      updateUser({
+      updateUserRef.current({
         ...userRes.data,
         referralCode: referralRes.data.referralCode,
         referralCount: referralRes.data.stats?.referralCount,
@@ -117,6 +129,12 @@ const Dashboard = () => {
       if (userRes.data.role === "expert") {
         setLoadingPayout(true);
         try {
+          payoutFetchCountRef.current += 1;
+          console.info("[PayoutSettings] GET /api/payouts/me", {
+            count: payoutFetchCountRef.current,
+            userId: userRes.data._id || userRef.current?._id || null,
+            role: userRes.data.role,
+          });
           const payoutRes = await axios.get(`${import.meta.env.VITE_API_URL}/api/payouts/me`, {
             headers: { Authorization: token }
           });
@@ -130,12 +148,16 @@ const Dashboard = () => {
     } finally {
       setLoadingBookings(false);
     }
-  }, [syncPayoutData, updateUser]);
+  }, [syncPayoutData]);
 
   useEffect(() => {
+    if (didInitialLoadRef.current) return undefined;
+    didInitialLoadRef.current = true;
+
     const timer = window.setTimeout(() => {
-      fetchData();
+      void fetchData();
     }, 0);
+
     return () => window.clearTimeout(timer);
   }, [fetchData]);
 
