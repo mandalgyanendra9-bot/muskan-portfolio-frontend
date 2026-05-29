@@ -32,6 +32,13 @@ const PREMIUM_FEATURES = [
   },
 ];
 
+const getRazorpayMode = (keyId = "") => {
+  const text = String(keyId || "");
+  if (text.startsWith("rzp_test_")) return "test";
+  if (text.startsWith("rzp_live_")) return "live";
+  return "unknown";
+};
+
 const Billing = () => {
   const { user, updateUser } = useAuth();
   const [history, setHistory] = useState([]);
@@ -83,10 +90,17 @@ const Billing = () => {
       );
 
       // 2. Open Razorpay Checkout
-      const razorpayKey = orderData.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID;
+      const razorpayKey = orderData.keyId;
       if (!razorpayKey) {
         throw new Error("Platform Razorpay key is missing");
       }
+      const keyMode = orderData.keyMode || getRazorpayMode(razorpayKey);
+      console.info("Razorpay billing order response", {
+        orderId: orderData.orderId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        keyMode,
+      });
 
       const options = {
         key: razorpayKey,
@@ -95,6 +109,10 @@ const Billing = () => {
         name: "Muskan Portfolio Platform",
         description: description,
         order_id: orderData.orderId,
+        notes: {
+          transaction_id: orderData.transactionId || "",
+          order_id: orderData.orderId || "",
+        },
         method: {
           upi: true,
           card: true,
@@ -244,11 +262,11 @@ const Billing = () => {
             <div className="space-y-4">
               {!showWithdraw ? (
                 <>
-                  <div className="flex gap-2">
-                    <input 
-                      type="number" 
-                      placeholder="Amount to add" 
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
+              <div className="flex gap-2">
+                <input 
+                  type="number" 
+                  placeholder="Amount to add" 
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-emerald-500"
                       value={amountInput}
                       onChange={e => setAmountInput(e.target.value)}
                     />
@@ -260,6 +278,9 @@ const Billing = () => {
                       Add +
                     </button>
                   </div>
+                  <p className="text-[11px] leading-5 text-slate-500">
+                    Razorpay Checkout is the only payment UI. Test mode uses the test key returned by the backend, so keep the backend key and secret in the same mode to avoid QR scan failures.
+                  </p>
                 </>
               ) : (
                 <form onSubmit={handleWithdraw} className="space-y-3 bg-black/20 p-4 rounded-xl border border-white/5">
