@@ -23,7 +23,7 @@ const tabs = [
 ];
 
 const bookingStatuses = ["pending", "confirmed", "completed", "cancelled"];
-const paymentStatuses = ["unpaid", "paid", "refunded"];
+const paymentStatuses = ["unpaid", "paid", "failed", "cancelled", "refunded"];
 
 const money = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -83,6 +83,7 @@ const getStatusClass = (status) => {
     completed: "bg-emerald-500/15 text-emerald-300 border-emerald-400/20",
     approved: "bg-sky-500/15 text-sky-300 border-sky-400/20",
     cancelled: "bg-red-500/15 text-red-300 border-red-400/20",
+    failed: "bg-red-500/15 text-red-300 border-red-400/20",
     paid: "bg-emerald-500/15 text-emerald-300 border-emerald-400/20",
     rejected: "bg-red-500/15 text-red-300 border-red-400/20",
     unpaid: "bg-amber-500/15 text-amber-300 border-amber-400/20",

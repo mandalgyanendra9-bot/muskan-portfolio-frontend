@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 
@@ -29,10 +29,38 @@ const loadRazorpayCheckout = () => new Promise((resolve, reject) => {
 
 const PaymentButton = ({ bookingData, onSuccess }) => {
   const [processing, setProcessing] = useState(false);
+  const outcomeInFlightRef = useRef(false);
+  const outcomeHandledRef = useRef(false);
+
+  const markPaymentOutcome = async (bookingId, orderId, status, reason = "") => {
+    if (!bookingId || outcomeHandledRef.current || outcomeInFlightRef.current) return null;
+    outcomeInFlightRef.current = true;
+
+    try {
+      const token = localStorage.getItem("token");
+      const { data } = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/bookings/payment-status`,
+        {
+          bookingId,
+          razorpay_order_id: orderId,
+          status,
+          reason,
+        },
+        { headers: { Authorization: token } }
+      );
+      outcomeHandledRef.current = true;
+      return data;
+    } finally {
+      outcomeInFlightRef.current = false;
+    }
+  };
 
   const handlePayment = async () => {
     setProcessing(true);
+    outcomeHandledRef.current = false;
     toast.loading("Opening Razorpay Checkout...", { id: "payment_status" });
+    let currentBookingId = "";
+    let currentOrderId = "";
 
     try {
       const token = localStorage.getItem("token");
@@ -41,6 +69,8 @@ const PaymentButton = ({ bookingData, onSuccess }) => {
         bookingData,
         { headers: { Authorization: token } }
       );
+      currentBookingId = data.booking?._id || "";
+      currentOrderId = data.orderId || "";
 
       await loadRazorpayCheckout();
 
@@ -56,12 +86,27 @@ const PaymentButton = ({ bookingData, onSuccess }) => {
         name: "Expert Consulting",
         description: "Consultation Booking Session",
         order_id: data.orderId,
+        image: `${window.location.origin}/favicon.svg`,
         method: {
           upi: true,
           card: true,
           netbanking: true,
           wallet: true,
           paylater: true,
+        },
+        config: {
+          display: {
+            blocks: {
+              upi: {
+                name: "UPI",
+                instruments: [{ method: "upi" }],
+              },
+            },
+            sequence: ["block.upi"],
+            preferences: {
+              show_default_blocks: true,
+            },
+          },
         },
         handler: async (response) => {
           try {
@@ -77,6 +122,7 @@ const PaymentButton = ({ bookingData, onSuccess }) => {
             );
 
             if (verifyRes.data.booking) {
+              outcomeHandledRef.current = true;
               toast.success("Payment successful. Booking confirmed.", { id: "payment_status" });
               onSuccess?.(verifyRes.data.booking);
             }
@@ -94,21 +140,56 @@ const PaymentButton = ({ bookingData, onSuccess }) => {
           color: "#6366f1",
         },
         modal: {
-          ondismiss: () => {
-            toast.dismiss("payment_status");
-            setProcessing(false);
+          ondismiss: async () => {
+            try {
+              if (!outcomeHandledRef.current) {
+                await markPaymentOutcome(data.booking._id, data.orderId, "cancelled", "Checkout dismissed by user");
+              }
+            } catch (err) {
+              console.error("Failed to mark payment as cancelled:", err);
+            } finally {
+              toast.dismiss("payment_status");
+              setProcessing(false);
+            }
           },
         },
       };
 
       const rzp = new window.Razorpay(options);
-      rzp.on("payment.failed", () => {
-        toast.error("Payment failed or cancelled", { id: "payment_status" });
-        setProcessing(false);
+      rzp.on("payment.failed", async (response) => {
+        try {
+          if (!outcomeHandledRef.current) {
+            await markPaymentOutcome(
+              data.booking._id,
+              data.orderId,
+              "failed",
+              response?.error?.description || response?.error?.reason || "Razorpay payment failed"
+            );
+          }
+        } catch (err) {
+          console.error("Failed to mark payment as failed:", err);
+        } finally {
+          toast.error("Payment failed or cancelled", { id: "payment_status" });
+          setProcessing(false);
+        }
       });
       rzp.open();
     } catch (error) {
       console.error(error);
+      const fallbackBookingId = error?.response?.data?.booking?._id || currentBookingId;
+      const fallbackOrderId = error?.response?.data?.orderId || currentOrderId;
+      if (!outcomeHandledRef.current && fallbackBookingId && fallbackOrderId) {
+        try {
+          await markPaymentOutcome(
+            fallbackBookingId,
+            fallbackOrderId,
+            "failed",
+            error.response?.data?.message || error.message || "Checkout failed to open"
+          );
+        } catch (markError) {
+          console.error("Failed to mark checkout error:", markError);
+        }
+      }
       toast.error(error.response?.data?.message || error.message || "Error initiating payment checkout", {
         id: "payment_status",
       });
@@ -134,7 +215,7 @@ const PaymentButton = ({ bookingData, onSuccess }) => {
       </button>
 
       <p className="mt-3 text-center text-xs text-slate-400">
-        UPI, PhonePe, Google Pay, Paytm, Card, and Net Banking via Razorpay Checkout.
+        UPI, PhonePe, Google Pay, Paytm, Card, and Net Banking via Razorpay Checkout with dynamic QR.
       </p>
 
       {processing && (
