@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getInitials, resolveProfilePhotoUrl } from "../utils/profilePhoto";
 
 const ProfileAvatar = ({
@@ -14,15 +14,12 @@ const ProfileAvatar = ({
   decoding = "async",
   fetchPriority,
 }) => {
-  const [hasError, setHasError] = useState(false);
+  const [failedSrc, setFailedSrc] = useState("");
 
   const resolvedSrc = resolveProfilePhotoUrl(src || user);
   const displayName = alt || user?.name || "User";
   const initials = getInitials(displayName);
-
-  useEffect(() => {
-    setHasError(false);
-  }, [resolvedSrc, user?.profilePhotoUrl, user?.profileImage, user?.profilePhoto, user?.photoUrl, user?.avatar, user?.googlePhoto, user?.image]);
+  const hasError = Boolean(resolvedSrc && failedSrc === resolvedSrc);
 
   if (!resolvedSrc || hasError) {
     return (
@@ -38,7 +35,7 @@ const ProfileAvatar = ({
       alt={displayName}
       title={title || displayName}
       onClick={onClick}
-      onError={() => setHasError(true)}
+      onError={() => setFailedSrc(resolvedSrc)}
       loading={loading}
       decoding={decoding}
       fetchPriority={fetchPriority}

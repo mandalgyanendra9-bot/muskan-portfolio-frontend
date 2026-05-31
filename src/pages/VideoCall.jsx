@@ -11,7 +11,7 @@ import {
 } from "../components/SensitiveContentProtection";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
-const CALL_JOIN_EARLY_MINUTES = 10;
+const CALL_JOIN_EARLY_MINUTES = 30;
 const CONSENT_STORAGE_PREFIX = "video-call-consent";
 
 const formatDuration = (totalSeconds = 0) => {
@@ -44,7 +44,7 @@ const VideoCall = () => {
   const [ending, setEnding] = useState(false);
   const [nowTick, setNowTick] = useState(() => Date.now());
   const [error, setError] = useState("");
-  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [acceptedConsentKey, setAcceptedConsentKey] = useState("");
   const [reporting, setReporting] = useState(false);
   const { enabled: watermarkEnabled } = useWatermarkProtectionEnabled();
 
@@ -64,6 +64,13 @@ const VideoCall = () => {
   const callCountdown = Math.max(0, Math.ceil((bookingEnd - nowTick) / 1000));
   const isAfterBookedTime = bookingEnd > 0 && nowTick >= bookingEnd;
   const consentStorageKey = booking ? `${CONSENT_STORAGE_PREFIX}:${booking._id}` : "";
+  const consentAccepted = Boolean(
+    consentStorageKey &&
+      (
+        acceptedConsentKey === consentStorageKey ||
+        (typeof window !== "undefined" && window.sessionStorage.getItem(consentStorageKey) === "true")
+      )
+  );
   const otherParticipant = booking
     ? String(booking.client?._id || booking.client) === String(user?._id)
       ? booking.expert
@@ -86,7 +93,7 @@ const VideoCall = () => {
       booking?._id ? `Booking ${booking._id}` : "Session preview",
       new Date(nowTick).toLocaleString(),
     ],
-    [booking?._id, nowTick, user?.email, user?.name, user?.phone, user?.phoneNumber, viewerContact]
+    [booking?._id, nowTick, user?.name, viewerContact]
   );
   const protectionScope = booking ? `video-call:${roomId}` : "video-call";
   const protection = useSensitiveContentProtection({
@@ -102,6 +109,7 @@ const VideoCall = () => {
     if (!booking) return "Loading meeting";
     return booking.notes || booking.expert?.name || "Booked consultation";
   }, [booking]);
+  const bookingId = booking?._id || "";
 
   const handleLeaveRoom = useCallback(() => {
     if (suppressLeaveCallbackRef.current) {
@@ -153,24 +161,24 @@ const VideoCall = () => {
   const acceptConsent = useCallback(() => {
     if (!consentStorageKey) return;
     window.sessionStorage.setItem(consentStorageKey, "true");
-    setConsentAccepted(true);
-    toast.success("Privacy consent saved for this session");
+    setAcceptedConsentKey(consentStorageKey);
+    toast.success("Privacy consent saved for this consultation");
   }, [consentStorageKey]);
 
   const declineConsent = useCallback(() => {
-    toast("You can join once you accept the privacy terms.", { icon: "info" });
+    toast("You can join once you accept the consultation privacy terms.", { icon: "info" });
     navigate("/dashboard", { replace: true });
   }, [navigate]);
 
   const markViolation = useCallback(
     async (action, details) => {
-      if (!booking?._id) return false;
+      if (!bookingId) return false;
       try {
         const token = localStorage.getItem("token");
         await axios.post(
           `${API_URL}/api/privacy/violations`,
           {
-            bookingId: booking._id,
+            bookingId,
             targetUserId: otherParticipantId || null,
             action,
             details: String(details || "").slice(0, 1000),
@@ -186,17 +194,17 @@ const VideoCall = () => {
         return false;
       }
     },
-    [booking?._id, otherParticipantId]
+    [bookingId, otherParticipantId]
   );
 
   const handleReportUser = useCallback(async () => {
     if (!booking || !otherParticipantId) return;
-    const reason = window.prompt("Describe the issue or violation:");
+    const reason = window.prompt("Describe the issue:");
     if (reason === null) return;
 
     setReporting(true);
     try {
-      const saved = await markViolation("report_user", reason || "User reported from secure session");
+      const saved = await markViolation("report_user", reason || "User reported from secure consultation session");
       if (saved) {
         toast.success(`${otherParticipantName} reported`);
       } else {
@@ -211,7 +219,7 @@ const VideoCall = () => {
 
   const handleBlockUser = useCallback(async () => {
     if (!booking || !otherParticipantId) return;
-    const confirmBlock = window.confirm(`Block ${otherParticipantName} for this account and sensitive sessions?`);
+    const confirmBlock = window.confirm(`Block ${otherParticipantName} for this account and secure consultation sessions?`);
     if (!confirmBlock) return;
 
     setReporting(true);
@@ -263,11 +271,6 @@ const VideoCall = () => {
 
     fetchBooking();
   }, [navigate, roomId, user]);
-
-  useEffect(() => {
-    if (!consentStorageKey) return;
-    setConsentAccepted(window.sessionStorage.getItem(consentStorageKey) === "true");
-  }, [consentStorageKey]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -373,8 +376,8 @@ const VideoCall = () => {
   }, [booking, callAccess, joinOpensAt, nowTick]);
 
   const statusCopy = useMemo(() => {
-    if (!booking) return "Loading booked session...";
-    if (booking.status === "completed") return "This booked session has already ended.";
+    if (!booking) return "Loading booked consultation...";
+    if (booking.status === "completed") return "This booked consultation has already ended.";
     if (nowTick < joinOpensAt) {
       return `Your room opens in ${formatDuration(joinCountdown)}.`;
     }
@@ -419,7 +422,7 @@ const VideoCall = () => {
     return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-6">
         <div className="w-full max-w-2xl rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center">
-          <p className="text-xs font-bold uppercase tracking-[0.3em] text-emerald-300">Session complete</p>
+          <p className="text-xs font-bold uppercase tracking-[0.3em] text-emerald-300">Consultation complete</p>
           <h1 className="mt-4 text-4xl font-extrabold">The booked call has ended</h1>
           <p className="mt-3 text-slate-400">{meetingLabel} is now closed. We will return you to the dashboard.</p>
           <button
@@ -439,7 +442,7 @@ const VideoCall = () => {
       <div className="min-h-screen bg-slate-950 text-white">
         <div className="mx-auto flex min-h-screen max-w-4xl items-center justify-center px-6 py-10">
           <div className="w-full rounded-[2rem] border border-white/10 bg-white/5 p-8">
-            <p className="text-xs font-bold uppercase tracking-[0.3em] text-primary-300">Booked session</p>
+            <p className="text-xs font-bold uppercase tracking-[0.3em] text-primary-300">Booked consultation</p>
             <h1 className="mt-4 text-4xl font-extrabold">{meetingLabel}</h1>
             <p className="mt-3 max-w-2xl text-slate-400">{statusCopy}</p>
             <div className="mt-8 grid gap-4 md:grid-cols-3">
@@ -475,7 +478,7 @@ const VideoCall = () => {
         <div className="mx-auto flex min-h-screen max-w-5xl items-center justify-center px-6 py-10">
           <div className="grid w-full gap-6 rounded-[2rem] border border-white/10 bg-white/5 p-6 lg:grid-cols-[1.05fr_0.95fr] lg:p-8">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.3em] text-primary-300">Secure session check</p>
+              <p className="text-xs font-bold uppercase tracking-[0.3em] text-primary-300">Secure consultation check</p>
               <h1 className="mt-4 text-4xl font-extrabold">{meetingLabel}</h1>
               <p className="mt-3 text-slate-400">{statusCopy}</p>
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
@@ -491,15 +494,15 @@ const VideoCall = () => {
                 </div>
               </div>
               <p className="mt-6 text-sm text-slate-500">
-                We will not join the room until you confirm the no-recording, no-screenshot, and no-sharing terms.
+                We will not join the room until you confirm the secure consultation privacy terms.
               </p>
             </div>
             <div className="rounded-[1.5rem] border border-white/10 bg-slate-950 p-5">
               <p className="text-xs font-bold uppercase tracking-[0.3em] text-slate-500">Call rules</p>
               <ul className="mt-4 space-y-3 text-sm text-slate-300">
                 <li className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">No recording is allowed.</li>
-                <li className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">No screenshots or screen sharing are allowed.</li>
-                <li className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">No redistribution or sharing of protected content.</li>
+                <li className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">Session privacy protection requirements must be followed.</li>
+                <li className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">No unauthorized sharing of consultation materials.</li>
               </ul>
               <p className="mt-6 text-xs uppercase tracking-[0.25em] text-slate-500">Select all terms to continue</p>
               <p className="mt-4 rounded-2xl border border-primary-400/20 bg-primary-500/10 px-4 py-3 text-sm text-slate-200">
@@ -510,7 +513,7 @@ const VideoCall = () => {
                 onClick={declineConsent}
                 className="mt-4 w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-3 font-bold text-slate-300 transition hover:bg-white/10"
               >
-                Leave session
+                Leave consultation
               </button>
             </div>
           </div>

@@ -16,6 +16,30 @@ const money = new Intl.NumberFormat("en-IN", {
 
 const formatMoney = (value = 0) => money.format(Number(value) || 0);
 
+const getBookingStart = (booking = {}) => booking.slotStart || booking.date || booking.createdAt;
+const getBookingDurationMinutes = (booking = {}) => Number(booking.durationMinutes || booking.duration || 0);
+const getBookingAmount = (booking = {}) => Number(booking.totalAmount || booking.totalPrice || 0);
+const getExpertMinuteRate = (expert = {}) => Number(expert.perMinuteRate || expert.pricePerMinute || 0);
+const JOIN_ROOM_EARLY_MINUTES = 30;
+const JOIN_ROOM_GRACE_MINUTES = 5;
+const getBookingEndTime = (booking = {}) => {
+  if (booking.slotEnd) return new Date(booking.slotEnd).getTime();
+  const start = new Date(getBookingStart(booking)).getTime();
+  const durationMs = getBookingDurationMinutes(booking) * 60 * 1000;
+  return Number.isFinite(start) ? start + durationMs : 0;
+};
+const canShowJoinRoom = (booking = {}, now = Date.now()) => {
+  const start = new Date(getBookingStart(booking)).getTime();
+  const end = getBookingEndTime(booking);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+  return (
+    booking.status === "confirmed" &&
+    booking.paymentStatus === "paid" &&
+    now >= start - JOIN_ROOM_EARLY_MINUTES * 60 * 1000 &&
+    now <= end + JOIN_ROOM_GRACE_MINUTES * 60 * 1000
+  );
+};
+
 const getInitialPayoutForm = (user = {}) => ({
   upiId: user?.upiId || "",
   accountHolderName: user?.accountHolderName || "",
@@ -45,6 +69,7 @@ const Dashboard = () => {
   const [loadingPayout, setLoadingPayout] = useState(false);
   const [savingPayout, setSavingPayout] = useState(false);
   const [requestingPayout, setRequestingPayout] = useState(false);
+  const [nowTick, setNowTick] = useState(() => Date.now());
   
   // Invoice states
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -60,6 +85,7 @@ const Dashboard = () => {
     bio: user?.bio || "",
     skills: user?.skills?.join(", ") || "",
     hourlyRate: user?.hourlyRate || 25,
+    perMinuteRate: user?.perMinuteRate || user?.pricePerMinute || 10,
     location: user?.location || "",
     experience: user?.experience || "",
     github: user?.github || "",
@@ -124,6 +150,15 @@ const Dashboard = () => {
         referralRewardCoins: referralRes.data.stats?.referralRewardCoins,
         coinBalance: referralRes.data.stats?.coinBalance ?? userRes.data.coinBalance,
       });
+      console.info("[Client Dashboard Fetched Bookings]", bookingsRes.data);
+      bookingsRes.data.forEach((booking) => {
+        console.info("[Booking Client Compare]", {
+          bookingId: booking._id,
+          bookingClientId: booking.clientId || booking.client?._id || booking.client,
+          loggedInUserId: userRes.data._id || userRef.current?._id,
+          matches: String(booking.clientId || booking.client?._id || booking.client) === String(userRes.data._id || userRef.current?._id),
+        });
+      });
       setBookings(bookingsRes.data);
 
       if (userRes.data.role === "expert") {
@@ -160,6 +195,14 @@ const Dashboard = () => {
 
     return () => window.clearTimeout(timer);
   }, [fetchData]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowTick(Date.now());
+    }, 30000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   // Profile Completion Wizard Submit
   const handleProfileSubmit = async (e) => {
@@ -311,13 +354,13 @@ const Dashboard = () => {
 
   // Join Call Helper
   const handleJoinCall = (b) => {
-    navigate(`/video-call/${b.meetingLink.split("/").pop()}`, { state: { booking: b } });
+    navigate(`/video-call/${b._id}`, { state: { booking: b } });
   };
 
   // Calculations for analytics (Expert role)
   const earningsSum = bookings
     .filter(b => b.status === "completed" && b.paymentStatus === "paid")
-    .reduce((sum, b) => sum + b.totalPrice, 0);
+    .reduce((sum, b) => sum + getBookingAmount(b), 0);
 
   const pendingCount = bookings.filter(b => b.status === "pending").length;
   const confirmedCount = bookings.filter(b => b.status === "confirmed").length;
@@ -333,6 +376,11 @@ const Dashboard = () => {
     if (bookingFilter === "all") return true;
     return b.status === bookingFilter;
   });
+  const clientVisibleBookings = bookings.filter((b) => (
+    b.status === "confirmed" &&
+    b.paymentStatus === "paid" &&
+    getBookingEndTime(b) >= nowTick
+  ));
 
   return (
     <div className="min-h-screen bg-surface flex flex-col">
@@ -406,7 +454,7 @@ const Dashboard = () => {
                   <label className="text-sm font-semibold text-slate-300">Location</label>
                   <input
                     type="text"
-                    placeholder="e.g. San Francisco, CA / Remote"
+                          placeholder="e.g. Delhi, India"
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3.5 focus:border-primary-500 transition-all text-white text-sm"
                     value={profileForm.location}
                     onChange={(e) => setProfileForm({ ...profileForm, location: e.target.value })}
@@ -424,6 +472,19 @@ const Dashboard = () => {
                       className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3.5 focus:border-primary-500 transition-all text-white text-sm"
                       value={profileForm.hourlyRate}
                       onChange={(e) => setProfileForm({ ...profileForm, hourlyRate: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-300">Per-minute Rate (INR / min)</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      step="0.5"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3.5 focus:border-primary-500 transition-all text-white text-sm"
+                      value={profileForm.perMinuteRate}
+                      onChange={(e) => setProfileForm({ ...profileForm, perMinuteRate: e.target.value })}
                     />
                   </div>
 
@@ -504,7 +565,7 @@ const Dashboard = () => {
                   <p className="text-slate-400 text-sm mt-1">{user.title}</p>
                   {user.subscriptionPlan === "premium" && (
                     <span className="inline-flex mt-3 bg-amber-400/10 border border-amber-400/30 text-amber-300 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
-                      VIP premium member
+                      Premium professional member
                     </span>
                   )}
                 </div>
@@ -558,7 +619,7 @@ const Dashboard = () => {
                   <div className="glass p-8 rounded-[2rem] border-white/5 flex flex-col justify-between h-40 shadow-xl border-l-primary-500/20">
                     <span className="text-slate-500 font-bold uppercase tracking-wider text-xs">Active Tasks</span>
                     <h3 className="text-3xl font-extrabold text-primary-400">{confirmedCount} confirmed</h3>
-                    <span className="text-xs text-slate-400 font-medium">{pendingCount} pending, {priorityCount} VIP priority</span>
+                    <span className="text-xs text-slate-400 font-medium">{pendingCount} pending, {priorityCount} priority</span>
                   </div>
 
                   <div className="glass p-8 rounded-[2rem] border-white/5 flex flex-col justify-between h-40 shadow-xl border-l-amber-400/30">
@@ -635,11 +696,11 @@ const Dashboard = () => {
                                 <h4 className="text-xl font-bold text-white">{b.client?.name}</h4>
                                 <p className="text-slate-400 text-sm">{b.client?.email}</p>
                                 <p className="text-xs text-primary-400 font-mono mt-1">
-                                  📅 {new Date(b.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} ({b.duration}hr session)
+                                  {new Date(getBookingStart(b)).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} ({getBookingDurationMinutes(b)} min session)
                                 </p>
                                 {b.isPriority && (
                                   <span className="inline-flex mt-2 bg-amber-400/10 border border-amber-400/30 text-amber-300 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider">
-                                    VIP priority booking
+                                    Priority booking
                                   </span>
                                 )}
                                 {b.notes && (
@@ -667,7 +728,7 @@ const Dashboard = () => {
                                   {b.paymentStatus}
                                 </span>
                               </div>
-                              <p className="text-xl font-bold text-white mt-1">₹{b.totalPrice}</p>
+                              <p className="text-xl font-bold text-white mt-1">{formatMoney(getBookingAmount(b))}</p>
                             </div>
 
                             <div className="flex md:flex-col gap-2 w-full md:w-auto">
@@ -687,13 +748,13 @@ const Dashboard = () => {
                                   </button>
                                 </>
                               )}
-                              {b.status === "confirmed" && (
+                              {canShowJoinRoom(b, nowTick) && (
                                 <>
                                   <button
                                     onClick={() => handleJoinCall(b)}
                                     className="flex-1 bg-primary-500 hover:bg-primary-600 text-white font-bold py-3 px-4 rounded-xl text-xs transition-all active:scale-95 flex items-center justify-center gap-1 shadow-lg shadow-primary-500/20 animate-pulse"
                                   >
-                                    📹 Join Meeting Room
+                                    📹 Join Room
                                   </button>
                                   <button
                                     onClick={() => handleUpdateBookingStatus(b._id, "completed")}
@@ -736,6 +797,18 @@ const Dashboard = () => {
                         />
                       </div>
                       <div className="space-y-2">
+                        <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">Per-minute rate (INR / min)</label>
+                        <input
+                          type="number"
+                          required
+                          min="0"
+                          step="0.5"
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:border-primary-500 text-white transition-all text-sm"
+                          value={profileForm.perMinuteRate}
+                          onChange={(e) => setProfileForm({ ...profileForm, perMinuteRate: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
                         <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">Title</label>
                         <input
                           type="text"
@@ -757,11 +830,11 @@ const Dashboard = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">Exclusive Content for Subscribers</label>
+                      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 ml-1">Expert Resources for Subscribers</label>
                       <textarea
                         rows="5"
                         maxLength="1200"
-                        placeholder="Share a premium note, checklist, or resource for subscribers..."
+                        placeholder="Share a professional note, checklist, or consultation resource for subscribers..."
                         className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-3 focus:border-primary-500 text-white transition-all text-sm"
                         value={profileForm.exclusiveContent}
                         onChange={(e) => setProfileForm({ ...profileForm, exclusiveContent: e.target.value })}
@@ -994,9 +1067,9 @@ const Dashboard = () => {
                   <div className="space-y-6">
                     {loadingBookings ? (
                       <div className="py-20 flex justify-center"><div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div></div>
-                    ) : bookings.length === 0 ? (
+                    ) : clientVisibleBookings.length === 0 ? (
                       <div className="text-center py-20 bg-white/5 rounded-[2rem] border border-dashed border-white/5">
-                        <p className="text-slate-400 text-lg mb-6">You haven't booked any expert consultations yet.</p>
+                        <p className="text-slate-400 text-lg mb-6">No paid, confirmed upcoming consultations yet.</p>
                         <button
                           onClick={() => navigate("/experts")}
                           className="bg-primary-500 hover:bg-primary-600 text-white font-bold py-3.5 px-8 rounded-2xl transition-all shadow-lg shadow-primary-500/20"
@@ -1006,7 +1079,7 @@ const Dashboard = () => {
                       </div>
                     ) : (
                       <div className="grid gap-6">
-                        {bookings.map((b) => (
+                        {clientVisibleBookings.map((b) => (
                           <div key={b._id} className="glass p-8 rounded-[2rem] border-white/5 flex flex-col md:flex-row justify-between items-center gap-6 hover:border-primary-500/20 transition-all">
                             <div className="flex items-center gap-4 flex-1">
                               <img
@@ -1020,11 +1093,11 @@ const Dashboard = () => {
                                   <h4 className="text-xl font-bold text-white">{b.expert?.name}</h4>
                                   <p className="text-primary-400 text-sm">{b.expert?.title}</p>
                                   <p className="text-xs text-slate-400 font-mono mt-1">
-                                    📅 {new Date(b.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} ({b.duration}hr session)
+                                    {new Date(getBookingStart(b)).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} ({getBookingDurationMinutes(b)} min session)
                                   </p>
                                   {b.isPriority && (
                                     <span className="inline-flex mt-2 bg-amber-400/10 border border-amber-400/30 text-amber-300 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider">
-                                      VIP priority booking
+                                      Priority booking
                                     </span>
                                   )}
                                   {b.notes && (
@@ -1052,16 +1125,16 @@ const Dashboard = () => {
                                   {b.paymentStatus}
                                 </span>
                               </div>
-                              <p className="text-xl font-bold text-white mt-1">₹{b.totalPrice}</p>
+                              <p className="text-xl font-bold text-white mt-1">{formatMoney(getBookingAmount(b))}</p>
                             </div>
 
                             <div className="flex md:flex-col gap-2 w-full md:w-auto">
-                              {b.status === "confirmed" && (
+                              {canShowJoinRoom(b, nowTick) && (
                                 <button
                                   onClick={() => handleJoinCall(b)}
                                   className="flex-1 bg-primary-500 hover:bg-primary-600 text-white font-bold py-3.5 px-6 rounded-xl text-xs transition-all active:scale-95 flex items-center justify-center gap-1 shadow-lg shadow-primary-500/20 animate-pulse"
                                 >
-                                  📹 Join Call
+                                  📹 Join Room
                                 </button>
                               )}
                               
@@ -1126,7 +1199,9 @@ const Dashboard = () => {
                         <p className="text-primary-400 text-xs font-semibold mb-4">{expert.title}</p>
                         
                         <div className="w-full flex items-center justify-between border-t border-white/5 pt-4 mt-auto">
-                          <p className="text-sm font-bold text-white">₹{expert.hourlyRate}/hr</p>
+                          <p className="text-sm font-bold text-white">
+                            {getExpertMinuteRate(expert) > 0 ? `${formatMoney(getExpertMinuteRate(expert))}/min` : `${formatMoney(expert.hourlyRate || 0)}/hr`}
+                          </p>
                           <button
                             onClick={() => navigate(`/expert/${expert._id}`)}
                             className="bg-white/5 hover:bg-primary-500 text-white px-4 py-2 border border-white/10 rounded-xl text-xs font-bold transition-all"
@@ -1215,11 +1290,11 @@ const Dashboard = () => {
                   <tr>
                     <td className="py-3">
                       <p className="font-semibold">Professional Consultation Session</p>
-                      <p className="text-xs text-slate-400">Scheduled on {new Date(selectedInvoice.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                      <p className="text-xs text-slate-400">Scheduled on {new Date(getBookingStart(selectedInvoice)).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
                     </td>
-                    <td className="py-3 text-center font-mono">{selectedInvoice.duration} Hour(s)</td>
-                    <td className="py-3 text-right font-mono">₹{selectedInvoice.totalPrice / selectedInvoice.duration}</td>
-                    <td className="py-3 text-right font-bold text-slate-900 font-mono">₹{selectedInvoice.totalPrice}</td>
+                    <td className="py-3 text-center font-mono">{getBookingDurationMinutes(selectedInvoice)} min</td>
+                    <td className="py-3 text-right font-mono">{formatMoney(selectedInvoice.perMinuteRate || ((getBookingAmount(selectedInvoice) || 0) / Math.max(getBookingDurationMinutes(selectedInvoice), 1)))}/min</td>
+                    <td className="py-3 text-right font-bold text-slate-900 font-mono">{formatMoney(getBookingAmount(selectedInvoice))}</td>
                   </tr>
                 </tbody>
               </table>
@@ -1227,7 +1302,7 @@ const Dashboard = () => {
               {/* Fees and totals */}
               <div className="pt-4 border-t-2 border-slate-900 flex justify-between items-center text-lg font-black text-slate-900">
                 <span>TOTAL AMOUNT PAID</span>
-                <span className="font-mono">₹{selectedInvoice.totalPrice}.00</span>
+                <span className="font-mono">{formatMoney(getBookingAmount(selectedInvoice))}</span>
               </div>
 
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 mt-6">
