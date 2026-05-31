@@ -135,7 +135,6 @@ const PaymentButton = ({ bookingData, onSuccess }) => {
             );
 
             if (verifyRes.data.booking) {
-              console.info("[Payment Success Booking Response]", verifyRes.data.booking);
               outcomeHandledRef.current = true;
               toast.success("Payment successful. Booking confirmed.", { id: "payment_status" });
               onSuccess?.(verifyRes.data.booking);

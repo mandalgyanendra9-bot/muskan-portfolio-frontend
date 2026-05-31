@@ -150,15 +150,6 @@ const Dashboard = () => {
         referralRewardCoins: referralRes.data.stats?.referralRewardCoins,
         coinBalance: referralRes.data.stats?.coinBalance ?? userRes.data.coinBalance,
       });
-      console.info("[Client Dashboard Fetched Bookings]", bookingsRes.data);
-      bookingsRes.data.forEach((booking) => {
-        console.info("[Booking Client Compare]", {
-          bookingId: booking._id,
-          bookingClientId: booking.clientId || booking.client?._id || booking.client,
-          loggedInUserId: userRes.data._id || userRef.current?._id,
-          matches: String(booking.clientId || booking.client?._id || booking.client) === String(userRes.data._id || userRef.current?._id),
-        });
-      });
       setBookings(bookingsRes.data);
 
       if (userRes.data.role === "expert") {
