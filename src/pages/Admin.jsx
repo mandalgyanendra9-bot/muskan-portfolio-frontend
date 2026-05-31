@@ -16,10 +16,10 @@ const tabs = [
   { id: "users", label: "Manage Users", short: "US" },
   { id: "profiles", label: "Block/Verify Profiles", short: "PV" },
   { id: "revenue", label: "Revenue Analytics", short: "RA" },
-  { id: "payouts", label: "Payout Management", short: "PY" },
+  { id: "payouts", label: "Payout History", short: "PY" },
   { id: "settings", label: "Admin Settings", short: "AS" },
   { id: "reports", label: "Reports & Complaints", short: "RC" },
-  { id: "violations", label: "Privacy Violations", short: "VL" },
+  { id: "violations", label: "Security Activity", short: "SA" },
   { id: "bookings", label: "Booking Management", short: "BM" },
 ];
 
@@ -42,6 +42,10 @@ const formatDate = (value) => {
     year: "numeric",
   });
 };
+
+const getBookingStart = (booking = {}) => booking.slotStart || booking.date || booking.createdAt;
+const getBookingDurationMinutes = (booking = {}) => Number(booking.durationMinutes || booking.duration || 0);
+const getBookingAmount = (booking = {}) => Number(booking.totalAmount || booking.totalPrice || 0);
 
 const lower = (value) => String(value || "").toLowerCase();
 
@@ -274,10 +278,22 @@ setWatermarkProtectionEnabled(settingsRes.data.watermarkProtectionEnabled !== fa
 
   const handlePayoutUpdate = (payoutId, status) => {
     const payload = { status };
+    if (status === "rejected") {
+      const adminNote = window.prompt("Optional admin note for this rejected payout:");
+      if (adminNote === null) return;
+      payload.adminNote = adminNote;
+    }
     if (status === "paid") {
-      const transactionId = window.prompt("Enter payout transaction/reference ID, if available:");
+      const transactionId = window.prompt("Enter transaction ID / UTR number from the manual UPI or bank transfer:");
       if (transactionId === null) return;
-      payload.transactionId = transactionId;
+      if (!transactionId.trim()) {
+        toast.error("Transaction ID / UTR number is required");
+        return;
+      }
+      const adminNote = window.prompt("Optional note for payout history:");
+      if (adminNote === null) return;
+      payload.transactionId = transactionId.trim();
+      payload.adminNote = adminNote;
     }
 
     runAdminAction(
@@ -371,10 +387,10 @@ setWatermarkProtectionEnabled(settingsRes.data.watermarkProtectionEnabled !== fa
   };
 
   const handleBlockFromViolation = (violationId) => {
-    if (!window.confirm("Block this user from the violation log?")) return;
+    if (!window.confirm("Block this user from the security activity log?")) return;
     runAdminAction(
       () => axios.post(`${API_BASE}/admin/violations/${violationId}/block`, {}, { headers: getAuthHeaders() }),
-      "User blocked from violation log"
+      "User blocked from security activity log"
     );
   };
 
@@ -549,7 +565,7 @@ setWatermarkProtectionEnabled(settingsRes.data.watermarkProtectionEnabled !== fa
                                 {booking.client?.name || "Client"} with {booking.expert?.name || "Expert"}
                               </p>
                               <p className="mt-1 text-xs text-slate-400">
-                                {formatDate(booking.date)} - {booking.duration || 1} hr - {formatMoney(booking.totalPrice)}
+                                {formatDate(getBookingStart(booking))} - {getBookingDurationMinutes(booking)} min - {formatMoney(getBookingAmount(booking))}
                               </p>
                             </div>
                             <div className="flex flex-wrap gap-2 md:justify-end">
@@ -733,7 +749,7 @@ setWatermarkProtectionEnabled(settingsRes.data.watermarkProtectionEnabled !== fa
                         </div>
 
                         <div className="mt-4 grid gap-3 rounded-lg border border-white/5 bg-black/10 p-4 text-xs text-slate-400 sm:grid-cols-3">
-                          <ProfileStat label="Rate" value={formatMoney(expert.hourlyRate || 0)} />
+                          <ProfileStat label="Rate" value={`${formatMoney(expert.perMinuteRate || expert.pricePerMinute || ((Number(expert.hourlyRate) || 0) / 60))}/min`} />
                           <ProfileStat label="Category" value={expert.category || "General"} />
                           <ProfileStat label="Rating" value={`${expert.rating || 0} / 5`} />
                         </div>
@@ -822,7 +838,7 @@ setWatermarkProtectionEnabled(settingsRes.data.watermarkProtectionEnabled !== fa
 
               {activeTab === "payouts" && (
                 <section className="space-y-6">
-                  <Toolbar title="Payout Management" value={payoutSearch} onChange={setPayoutSearch} placeholder="Search expert, method, status, account..." />
+                  <Toolbar title="Payout History" value={payoutSearch} onChange={setPayoutSearch} placeholder="Search expert, method, status, account..." />
                   <div className="flex justify-end">
                     <button
                       type="button"
@@ -842,7 +858,7 @@ setWatermarkProtectionEnabled(settingsRes.data.watermarkProtectionEnabled !== fa
 
                   <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
                     <div className="overflow-x-auto">
-                      <table className="w-full min-w-[1120px] text-left text-sm">
+                      <table className="w-full min-w-[1280px] text-left text-sm">
                         <thead className="bg-white/5 text-xs uppercase tracking-wide text-slate-400">
                           <tr>
                             <th className="p-4">Expert</th>
@@ -851,6 +867,7 @@ setWatermarkProtectionEnabled(settingsRes.data.watermarkProtectionEnabled !== fa
                             <th className="p-4">Payout Details</th>
                             <th className="p-4">Requested</th>
                             <th className="p-4">Status</th>
+                            <th className="p-4">Transfer Proof</th>
                             <th className="p-4 text-right">Actions</th>
                           </tr>
                         </thead>
@@ -883,16 +900,31 @@ setWatermarkProtectionEnabled(settingsRes.data.watermarkProtectionEnabled !== fa
                                 </td>
                                 <td className="p-4 text-xs text-slate-500">{formatDate(payout.createdAt)}</td>
                                 <td className="p-4"><StatusBadge status={payout.status}>{payout.status}</StatusBadge></td>
+                                <td className="p-4 text-xs text-slate-400">
+                                  {payout.status === "paid" ? (
+                                    <>
+                                      <p className="font-mono text-primary-200">{payout.transactionId || "No transaction ID"}</p>
+                                      <p className="mt-1 text-slate-500">Paid {formatDate(payout.paidAt)}</p>
+                                      {payout.adminNote && <p className="mt-1">{payout.adminNote}</p>}
+                                    </>
+                                  ) : payout.status === "approved" ? (
+                                    <p>Manual UPI/bank transfer pending</p>
+                                  ) : payout.status === "rejected" ? (
+                                    <p>{payout.adminNote || "No note added"}</p>
+                                  ) : (
+                                    <p>Awaiting approval</p>
+                                  )}
+                                </td>
                                 <td className="p-4">
                                   <div className="flex flex-wrap justify-end gap-2">
-                                    {payout.status !== "approved" && payout.status !== "paid" && (
+                                    {payout.status === "pending" && (
                                       <ActionButton tone="green" onClick={() => handlePayoutUpdate(payout._id, "approved")}>
                                         Approve
                                       </ActionButton>
                                     )}
-                                    {payout.status !== "paid" && payout.status !== "rejected" && (
+                                    {payout.status === "approved" && (
                                       <ActionButton tone="green" onClick={() => handlePayoutUpdate(payout._id, "paid")}>
-                                        Mark Paid
+                                        Mark as Paid
                                       </ActionButton>
                                     )}
                                     {payout.status !== "rejected" && payout.status !== "paid" && (
@@ -953,7 +985,7 @@ setWatermarkProtectionEnabled(settingsRes.data.watermarkProtectionEnabled !== fa
                       <span className="text-sm text-slate-200">
                         <span className="block font-bold text-white">Dynamic watermark protection</span>
                         <span className="block text-xs text-slate-500">
-                          Show moving user/session watermarks on protected photos, video calls, and live streams.
+                          Show moving user/session watermarks on protected consultation materials, video calls, and online sessions.
                         </span>
                       </span>
                     </label>
@@ -996,7 +1028,7 @@ setWatermarkProtectionEnabled(settingsRes.data.watermarkProtectionEnabled !== fa
 
               {activeTab === "violations" && (
                 <section className="space-y-6">
-                  <Toolbar title="Privacy Violations" value={violationSearch} onChange={setViolationSearch} placeholder="Search action, user, booking..." />
+                  <Toolbar title="Security Activity Logging" value={violationSearch} onChange={setViolationSearch} placeholder="Search action, user, booking..." />
                   <div className="grid gap-4">
                     {filteredViolations.map((violation) => (
                       <div key={violation._id} className="rounded-lg border border-white/10 bg-white/[0.03] p-5">
@@ -1034,7 +1066,7 @@ setWatermarkProtectionEnabled(settingsRes.data.watermarkProtectionEnabled !== fa
                         </p>
                       </div>
                     ))}
-                    {filteredViolations.length === 0 && <EmptyState text="No privacy violations found." />}
+                    {filteredViolations.length === 0 && <EmptyState text="No security activity records found." />}
                   </div>
                 </section>
               )}
@@ -1062,10 +1094,10 @@ setWatermarkProtectionEnabled(settingsRes.data.watermarkProtectionEnabled !== fa
                               <td className="p-4"><UserMini user={booking.client} /></td>
                               <td className="p-4"><UserMini user={booking.expert} /></td>
                               <td className="p-4">
-                                <p className="font-bold text-white">{formatDate(booking.date)}</p>
-                                <p className="text-xs text-slate-500">{booking.duration} min session</p>
+                                <p className="font-bold text-white">{formatDate(getBookingStart(booking))}</p>
+                                <p className="text-xs text-slate-500">{getBookingDurationMinutes(booking)} min session</p>
                               </td>
-                              <td className="p-4 font-bold text-white">{formatMoney(booking.totalPrice)}</td>
+                              <td className="p-4 font-bold text-white">{formatMoney(getBookingAmount(booking))}</td>
                               <td className="p-4">
                                 <SelectField
                                   value={booking.status}

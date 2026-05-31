@@ -21,6 +21,15 @@ const DEFAULT_SCHEDULE = [
   { day: "Sunday", from: "10:00", to: "15:00", available: false },
 ];
 
+const formatTime12 = (time = "") => {
+  const [hourText, minute = "00"] = String(time).split(":");
+  const hour = Number(hourText);
+  if (!Number.isFinite(hour)) return time;
+  const period = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${String(displayHour).padStart(2, "0")}:${minute} ${period}`;
+};
+
 const StarRating = ({ rating }) => (
   <div className="flex gap-0.5">
     {[1,2,3,4,5].map(i => (
@@ -55,7 +64,8 @@ const Profile = () => {
     bio: user?.bio || "",
     skills: user?.skills || [],
     hourlyRate: user?.hourlyRate || 0,
-    pricePerMinute: user?.pricePerMinute || 0,
+    perMinuteRate: user?.perMinuteRate || user?.pricePerMinute || 0,
+    pricePerMinute: user?.perMinuteRate || user?.pricePerMinute || 0,
     location: user?.location || "",
     experience: user?.experience || "",
     github: user?.github || "",
@@ -174,7 +184,8 @@ const Profile = () => {
       
       if (form.role === "expert") {
         fd.append("hourlyRate", String(form.hourlyRate ?? 0));
-        fd.append("pricePerMinute", String(form.pricePerMinute ?? 0));
+        fd.append("perMinuteRate", String(form.perMinuteRate ?? 0));
+        fd.append("pricePerMinute", String(form.perMinuteRate ?? 0));
         fd.append("category", form.category ?? "");
         fd.append("introVideo", form.introVideo ?? "");
         fd.append("exclusiveContent", form.exclusiveContent ?? "");
@@ -279,7 +290,7 @@ const Profile = () => {
                   </span>
                   {user?.subscriptionPlan === "premium" && (
                     <span className="bg-amber-400/10 border border-amber-400/30 text-amber-300 px-3 py-1 rounded-full text-xs font-bold">
-                      VIP premium
+                      Premium professional
                     </span>
                   )}
                 </div>
@@ -315,7 +326,7 @@ const Profile = () => {
             {/* Role Switcher */}
             <div className="glass p-8 rounded-[2rem] border-emerald-500/20 bg-emerald-500/5 flex flex-col md:flex-row items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-emerald-300">Account Type: {form.role === "expert" ? "Expert / Creator" : "Client"}</h2>
+                <h2 className="text-xl font-bold text-emerald-300">Account Type: {form.role === "expert" ? "Expert / Consultant" : "Client"}</h2>
                 <p className="text-slate-400 text-sm mt-1">
                   {form.role === "expert" 
                     ? "You are an Expert! You can set your pricing, schedule, and receive bookings." 
@@ -365,8 +376,8 @@ const Profile = () => {
                     <input type="number" min="0" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary-500 transition-all text-sm" value={form.hourlyRate} onChange={e => setForm(f => ({ ...f, hourlyRate: e.target.value }))} />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Price per Minute (₹/min)</label>
-                    <input type="number" min="0" step="0.5" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary-500 transition-all text-sm" value={form.pricePerMinute} onChange={e => setForm(f => ({ ...f, pricePerMinute: e.target.value }))} />
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Per-minute Rate (Rs./min)</label>
+                    <input type="number" min="0" step="0.5" className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary-500 transition-all text-sm" value={form.perMinuteRate} onChange={e => setForm(f => ({ ...f, perMinuteRate: e.target.value, pricePerMinute: e.target.value }))} />
                   </div>
                 </div>
               )}
@@ -414,11 +425,11 @@ const Profile = () => {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Exclusive Content for Subscribers</label>
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider ml-1">Expert Resources for Subscribers</label>
                   <textarea
                     rows={5}
                     maxLength={1200}
-                    placeholder="Share a premium note, resource, checklist, or private update for subscribers..."
+                    placeholder="Share a professional note, resource, checklist, or consultation update for subscribers..."
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-primary-500 transition-all text-sm placeholder-slate-600 resize-none"
                     value={form.exclusiveContent}
                     onChange={e => setForm(f => ({ ...f, exclusiveContent: e.target.value }))}
@@ -502,6 +513,9 @@ const Profile = () => {
                           <input type="time" className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-primary-500" value={day.from} onChange={e => updateSchedule(idx, "from", e.target.value)} />
                           <span className="text-slate-500 text-xs">to</span>
                           <input type="time" className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-primary-500" value={day.to} onChange={e => updateSchedule(idx, "to", e.target.value)} />
+                          <span className="text-slate-500 text-xs whitespace-nowrap">
+                            {formatTime12(day.from)} - {formatTime12(day.to)}
+                          </span>
                         </div>
                       )}
                       {!day.available && <span className="text-slate-600 text-xs italic">Not available</span>}

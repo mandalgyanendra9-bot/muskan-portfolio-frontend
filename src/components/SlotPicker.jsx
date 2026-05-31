@@ -1,121 +1,223 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 
-// API base URL – can be set via Vite env variable VITE_API_BASE_URL
-const API_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? 'https://muskan-portfolio-backend.onrender.com' : 'http://localhost:5000');
+const API_BASE = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || 'https://muskan-portfolio-backend.onrender.com').replace(/\/+$/, '');
+const DURATION_OPTIONS = [5, 7, 10, 15, 30, 60];
 
+const getTodayInputValue = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
-/**
- * SlotPicker
- * -------
- * Props:
- *   - expertId: string – MongoDB _id of the expert whose slots we fetch.
- *   - onSelect: (slot: { start: Date; end: Date }) => void – callback when a slot is chosen.
- *
- * The component fetches slots from `/api/slots/:expertId?date=YYYY-MM-DD`.
- * Each slot returned should contain `slotStart` and `slotEnd` ISO strings.
- * Users can select a date, see available slots, and pick one.
- */
-export default function SlotPicker({ expertId, onSelect }) {
-  // Date selector – default to today in YYYY-MM-DD format
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+const getRatePerMinute = (expert = {}) => {
+  const directRate = Number(expert.perMinuteRate) > 0
+    ? Number(expert.perMinuteRate)
+    : Number(expert.pricePerMinute) > 0
+      ? Number(expert.pricePerMinute)
+      : (Number(expert.hourlyRate) || 0) / 60;
+  return Math.round(directRate * 100) / 100;
+};
+
+const formatMoney = (value = 0) =>
+  new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: Number(value) % 1 === 0 ? 0 : 2,
+  }).format(Number(value) || 0);
+
+export default function SlotPicker({ expert, expertId, onSelect }) {
+  const resolvedExpertId = expert?._id || expertId;
+  const onSelectRef = useRef(onSelect);
+  const ratePerMinute = getRatePerMinute(expert);
+  const [date, setDate] = useState(getTodayInputValue());
+  const [durationMode, setDurationMode] = useState('5');
+  const [customDuration, setCustomDuration] = useState('');
   const [slots, setSlots] = useState([]);
   const [selectedIdx, setSelectedIdx] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch slots whenever expertId or selected date changes
+  const durationMinutes = useMemo(() => {
+    const value = durationMode === 'custom' ? Number(customDuration) : Number(durationMode);
+    if (!Number.isInteger(value) || value < 1 || value > 240) return null;
+    return value;
+  }, [customDuration, durationMode]);
+
   useEffect(() => {
-    if (!expertId) return;
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
+
+  useEffect(() => {
+    const resetTimer = window.setTimeout(() => {
+      onSelectRef.current?.(null);
+      setSelectedIdx(null);
+    }, 0);
+    return () => window.clearTimeout(resetTimer);
+  }, [date, durationMinutes]);
+
+  useEffect(() => {
+    if (!resolvedExpertId) return;
+    if (!durationMinutes) {
+      const invalidTimer = window.setTimeout(() => {
+        setSlots([]);
+        setLoading(false);
+        setError('Invalid duration selected.');
+      }, 0);
+      return () => window.clearTimeout(invalidTimer);
+    }
+
     const fetchSlots = async () => {
       try {
         setLoading(true);
-        const { data } = await axios.get(`${API_BASE}/api/slots/${expertId}?date=${date}`);
+        const { data } = await axios.get(
+          `${API_BASE}/api/slots/${encodeURIComponent(resolvedExpertId)}?date=${encodeURIComponent(date)}&durationMinutes=${encodeURIComponent(durationMinutes)}`
+        );
         const rawArray = Array.isArray(data)
           ? data
           : Array.isArray(data?.slots) ? data.slots : [];
-        const parsed = rawArray.map((s) => ({
-          start: new Date(s.start),
-          end: new Date(s.end),
-          displayStart: s.displayStart,
-          displayEnd: s.displayEnd,
+        const parsed = rawArray.map((slot) => ({
+          start: new Date(slot.start),
+          end: new Date(slot.end),
+          date: slot.date || date,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          durationMinutes: slot.durationMinutes || durationMinutes,
+          displayStart: slot.displayStart,
+          displayEnd: slot.displayEnd,
+          ratePerMinute: Number(slot.ratePerMinute) || ratePerMinute,
+          totalAmount: Number(slot.totalAmount) || Math.round(ratePerMinute * durationMinutes * 100) / 100,
         }));
         setSlots(parsed);
         setError(null);
       } catch (e) {
         console.error(e);
-        setError('Failed to load slots. Please try again later.');
-        toast.error('Unable to fetch available slots.');
+        const message = e.response?.data?.message || 'Unable to fetch available slots.';
+        setError(message);
+        toast.error(message);
       } finally {
         setLoading(false);
       }
     };
+
     fetchSlots();
-  }, [expertId, date]);
+  }, [date, durationMinutes, ratePerMinute, resolvedExpertId]);
 
   const handleSelect = (idx) => {
     setSelectedIdx(idx);
-    onSelect && onSelect(slots[idx]);
+    onSelectRef.current?.(slots[idx]);
   };
 
-  // UI rendering
   return (
-    <AnimatePresence>
-      {/* Date picker */}
-      <div className="mb-4">
-        <label className="block text-xs font-medium text-slate-500 mb-1">
-          Select Date
-        </label>
-        <input
-          type="date"
-          value={date}
-          min={new Date().toISOString().split('T')[0]}
-          className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-2 focus:border-primary-500 text-text-main"
-          onChange={(e) => setDate(e.target.value)}
-        />
+    <div className="space-y-5">
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+            Select date
+          </label>
+          <input
+            type="date"
+            value={date}
+            min={getTodayInputValue()}
+            className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 focus:border-primary-500 text-text-main"
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+            Expert rate
+          </label>
+          <div className="w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-white font-extrabold">
+            {formatMoney(ratePerMinute)}<span className="text-sm text-slate-400 font-semibold">/min</span>
+          </div>
+        </div>
       </div>
 
-      {loading && <p className="text-sm text-gray-400">Loading available slots…</p>}
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      <div>
+        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+          Duration
+        </label>
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+          {DURATION_OPTIONS.map((minutes) => (
+            <button
+              type="button"
+              key={minutes}
+              onClick={() => setDurationMode(String(minutes))}
+              className={`rounded-xl border px-3 py-2 text-xs font-extrabold transition-all ${
+                durationMode === String(minutes)
+                  ? 'border-primary-500 bg-primary-500/15 text-white'
+                  : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
+              }`}
+            >
+              {minutes} min
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 grid sm:grid-cols-[auto_1fr] gap-2">
+          <button
+            type="button"
+            onClick={() => setDurationMode('custom')}
+            className={`rounded-xl border px-4 py-2 text-xs font-extrabold transition-all ${
+              durationMode === 'custom'
+                ? 'border-primary-500 bg-primary-500/15 text-white'
+                : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
+            }`}
+          >
+            Custom duration
+          </button>
+          {durationMode === 'custom' && (
+            <input
+              type="number"
+              min="1"
+              max="240"
+              step="1"
+              value={customDuration}
+              placeholder="Enter minutes, e.g. 7"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-primary-500"
+              onChange={(e) => setCustomDuration(e.target.value)}
+            />
+          )}
+        </div>
+      </div>
+
+      {loading && <p className="text-sm text-gray-400">Loading available start times...</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
 
       {!loading && !error && slots.length === 0 && (
-        <p className="text-sm text-gray-500">No slots available for the selected date.</p>
+        <p className="text-sm text-gray-500">No slots available for selected date.</p>
       )}
 
       {!loading && !error && slots.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-          {slots.map((slot, idx) => {
-            const startStr = slot.start.toLocaleString(undefined, {
-              hour: 'numeric',
-              minute: 'numeric',
-              hour12: true,
-            });
-            const endStr = slot.end.toLocaleString(undefined, {
-              hour: 'numeric',
-              minute: 'numeric',
-              hour12: true,
-            });
-            const isSelected = idx === selectedIdx;
-            return (
-              <motion.button
-                key={idx}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => handleSelect(idx)}
-                className={`p-4 rounded-xl border ${
-                  isSelected ? 'border-primary-500 bg-primary-500/10' : 'border-gray-300'
-                } transition-colors`}
-              >
-                <span className="block font-medium text-gray-200">
-                  {startStr} – {endStr}
-                </span>
-              </motion.button>
-            );
-          })}
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+            Select start time
+          </label>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-72 overflow-y-auto pr-1">
+            {slots.map((slot, idx) => {
+              const isSelected = idx === selectedIdx;
+              return (
+                <motion.button
+                  key={`${slot.startTime}-${idx}`}
+                  type="button"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => handleSelect(idx)}
+                  className={`p-3 rounded-xl border text-left transition-colors ${
+                    isSelected ? 'border-primary-500 bg-primary-500/10' : 'border-white/10 bg-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <span className="block font-extrabold text-gray-100">{slot.displayStart}</span>
+                  <span className="block text-xs text-slate-500 mt-1">Ends {slot.displayEnd}</span>
+                </motion.button>
+              );
+            })}
+          </div>
         </div>
       )}
-    </AnimatePresence>
+    </div>
   );
 }

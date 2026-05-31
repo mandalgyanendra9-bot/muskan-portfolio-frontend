@@ -16,6 +16,21 @@ const money = new Intl.NumberFormat("en-IN", {
 
 const formatMoney = (value = 0) => money.format(Number(value) || 0);
 
+const getPayoutStatusLabel = (status) => {
+  if (status === "pending") return "Payout Requested";
+  if (status === "approved") return "Approved";
+  if (status === "paid") return "Paid";
+  if (status === "rejected") return "Rejected";
+  return status || "Payout Requested";
+};
+
+const getPayoutStatusClass = (status) => {
+  if (status === "paid") return "bg-emerald-500/15 text-emerald-300";
+  if (status === "rejected") return "bg-red-500/15 text-red-300";
+  if (status === "approved") return "bg-primary-500/15 text-primary-300";
+  return "bg-amber-500/15 text-amber-300";
+};
+
 const getBookingStart = (booking = {}) => booking.slotStart || booking.date || booking.createdAt;
 const getBookingDurationMinutes = (booking = {}) => Number(booking.durationMinutes || booking.duration || 0);
 const getBookingAmount = (booking = {}) => Number(booking.totalAmount || booking.totalPrice || 0);
@@ -999,25 +1014,37 @@ const Dashboard = () => {
                             </div>
 
                             <div className="glass p-6 rounded-[2rem] border-white/5 shadow-xl">
-                              <h3 className="text-lg font-bold text-white mb-4">Recent Payout Requests</h3>
+                              <h3 className="text-lg font-bold text-white mb-4">Payout History</h3>
                               <div className="space-y-3">
                                 {payoutRequests.length === 0 ? (
                                   <p className="text-sm text-slate-500 py-6 text-center">No payout requests yet.</p>
                                 ) : (
                                   payoutRequests.map((payout) => (
-                                    <div key={payout._id} className="flex items-center justify-between gap-4 rounded-xl border border-white/5 bg-white/5 p-4">
-                                      <div>
-                                        <p className="font-bold text-white">{formatMoney(payout.amount || payout.netAmount)}</p>
-                                        <p className="text-xs text-slate-500">{new Date(payout.createdAt).toLocaleDateString()}</p>
+                                    <div key={payout._id} className="rounded-xl border border-white/5 bg-white/5 p-4">
+                                      <div className="flex items-center justify-between gap-4">
+                                        <div>
+                                          <p className="font-bold text-white">{formatMoney(payout.amount || payout.netAmount)}</p>
+                                          <p className="text-xs text-slate-500">{new Date(payout.createdAt).toLocaleDateString()}</p>
+                                        </div>
+                                        <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${getPayoutStatusClass(payout.status)}`}>
+                                          {getPayoutStatusLabel(payout.status)}
+                                        </span>
                                       </div>
-                                      <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${
-                                        payout.status === "paid" ? "bg-emerald-500/15 text-emerald-300" :
-                                        payout.status === "rejected" ? "bg-red-500/15 text-red-300" :
-                                        payout.status === "approved" ? "bg-primary-500/15 text-primary-300" :
-                                        "bg-amber-500/15 text-amber-300"
-                                      }`}>
-                                        {payout.status}
-                                      </span>
+                                      {payout.status === "paid" && (
+                                        <div className="mt-3 rounded-lg border border-emerald-400/10 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-200">
+                                          <p>Transaction ID / UTR: <span className="font-mono font-bold">{payout.transactionId || "Not provided"}</span></p>
+                                          {payout.paidAt && <p className="mt-1 text-emerald-300/70">Paid on {new Date(payout.paidAt).toLocaleDateString()}</p>}
+                                        </div>
+                                      )}
+                                      {payout.status === "rejected" && payout.adminNote && (
+                                        <p className="mt-3 text-xs text-red-200">{payout.adminNote}</p>
+                                      )}
+                                      {payout.status === "approved" && (
+                                        <p className="mt-3 text-xs text-primary-200">Approved by admin. Manual UPI/bank transfer is next.</p>
+                                      )}
+                                      {payout.status === "pending" && (
+                                        <p className="mt-3 text-xs text-amber-200">Request submitted and waiting for admin approval.</p>
+                                      )}
                                     </div>
                                   ))
                                 )}
