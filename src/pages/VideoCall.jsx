@@ -13,6 +13,7 @@ import {
 const API_URL = import.meta.env.VITE_API_URL || "";
 const CALL_JOIN_EARLY_MINUTES = 30;
 const CONSENT_STORAGE_PREFIX = "video-call-consent";
+const ZEGO_LOGIN_TIMEOUT_MS = 10000;
 
 const CALL_STATES = {
   checking: "Checking camera/microphone...",
@@ -50,6 +51,46 @@ const summarizeZegoError = (error) => ({
   code: error?.code ?? error?.errorCode ?? null,
   message: error?.message || error?.msg || String(error || "Unknown Zego error"),
 });
+
+const getZegoSdkErrorDetails = (error, fallbackMessage = "") => {
+  if (!error) return { code: "", message: fallbackMessage };
+  const code = error?.code ?? error?.errorCode ?? error?.errCode ?? error?.error_code ?? "";
+  const message = error?.message || error?.msg || error?.reason || fallbackMessage || String(error);
+  return { code: code === null || code === undefined ? "" : String(code), message: message || "" };
+};
+
+const getZegoAccessIds = (zegoAccess = {}) => ({
+  appId: Number(zegoAccess.appId ?? zegoAccess.appID ?? 0),
+  roomId: String(zegoAccess.roomId || ""),
+  userId: String(zegoAccess.userId ?? zegoAccess.userID ?? ""),
+  token: String(zegoAccess.token || ""),
+});
+
+const normalizeZegoServer = (server) => {
+  const normalizeOne = (value) => {
+    const text = String(value || "").trim();
+    if (!text) return "";
+    return /^(wss?|https?):\/\//i.test(text) ? text : "";
+  };
+
+  if (Array.isArray(server)) {
+    const servers = server.map(normalizeOne).filter(Boolean);
+    return servers.length > 0 ? servers : "";
+  }
+
+  return normalizeOne(server);
+};
+
+const withTimeout = (promise, ms, createTimeoutError) => {
+  let timerId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timerId = window.setTimeout(() => reject(createTimeoutError()), ms);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timerId) window.clearTimeout(timerId);
+  });
+};
 
 const sanitizeZegoDetails = (details = {}) => {
   const hiddenKeys = new Set(["token", "serverSecret", "secret", "kitToken"]);
@@ -146,11 +187,22 @@ const VideoCall = () => {
   const [callState, setCallState] = useState(CALL_STATES.waiting);
   const [remoteStreamIds, setRemoteStreamIds] = useState([]);
   const [callDiagnostics, setCallDiagnostics] = useState({
+    tokenReceived: false,
+    loginStarted: false,
+    loginSuccess: false,
+    loginError: "",
+    lastLoginError: "",
+    loginTimeout: false,
     joinedRoom: false,
+    engineExists: false,
+    appIdExists: false,
+    roomIdExists: false,
     localStreamCreated: false,
     localStreamPublished: false,
     localPublishError: "",
     roomState: "idle",
+    sdkErrorCode: "",
+    sdkErrorMessage: "",
     playerError: "",
   });
   const { enabled: watermarkEnabled } = useWatermarkProtectionEnabled();
@@ -675,11 +727,22 @@ const VideoCall = () => {
 
     const initializeCall = async () => {
       updateDiagnostics({
+        tokenReceived: false,
+        loginStarted: false,
+        loginSuccess: false,
+        loginError: "",
+        lastLoginError: "",
+        loginTimeout: false,
         joinedRoom: false,
+        engineExists: false,
+        appIdExists: false,
+        roomIdExists: false,
         localStreamCreated: false,
         localStreamPublished: false,
         localPublishError: "",
         roomState: "checking",
+        sdkErrorCode: "",
+        sdkErrorMessage: "",
         playerError: "",
         remoteStreamsCount: 0,
         remoteStreamIDs: [],
@@ -712,33 +775,115 @@ const VideoCall = () => {
       });
       if (cancelled) return;
 
-      if (zegoAccess.userID !== currentUserId) {
+      const {
+        appId: zegoAppId,
+        roomId: zegoRoomId,
+        userId: zegoUserId,
+        token: zegoToken,
+      } = getZegoAccessIds(zegoAccess);
+      const zegoStreamId = String(zegoAccess.streamID || zegoAccess.streamId || "");
+      const normalizedServer = normalizeZegoServer(zegoAccess.server);
+      const serverProvided = Array.isArray(zegoAccess.server)
+        ? zegoAccess.server.some((server) => String(server || "").trim())
+        : Boolean(String(zegoAccess.server || "").trim());
+      const tokenReceived = Boolean(zegoToken);
+      const appIdExists = Number.isSafeInteger(zegoAppId) && zegoAppId > 0;
+      const roomIdExists = Boolean(zegoRoomId);
+
+      updateDiagnostics({
+        tokenReceived,
+        appIdExists,
+        roomIdExists,
+        loginError: "",
+        lastLoginError: "",
+      });
+
+      logZegoDebug("zego token response", {
+        success: zegoAccess.success === true,
+        appId: zegoAppId,
+        roomId: zegoRoomId,
+        userId: zegoUserId,
+        tokenReceived,
+        serverConfigured: serverProvided,
+        serverUsed: Array.isArray(normalizedServer) ? normalizedServer.length > 0 : Boolean(normalizedServer),
+        streamID: zegoStreamId,
+      });
+
+      if (zegoAccess.success === false || !tokenReceived || !appIdExists || !roomIdExists || !zegoUserId || !zegoStreamId) {
+        throw new Error("Unable to join video server.");
+      }
+      if (zegoUserId !== currentUserId) {
         throw new Error("Zego user ID does not match the current user.");
       }
-      if (zegoAccess.roomId !== roomId) {
+      if (zegoRoomId !== roomId) {
         throw new Error("Zego room ID does not match this booking room.");
       }
 
       setSafeCallState(CALL_STATES.joining);
       logZegoDebug("zego config received", {
-        appID: zegoAccess.appID,
-        serverConfigured: Boolean(zegoAccess.server),
-        tokenGeneratedForRoomId: zegoAccess.roomId,
-        tokenGeneratedForUserID: zegoAccess.userID,
-        streamID: zegoAccess.streamID,
+        appId: zegoAppId,
+        appIdExists,
+        roomIdExists,
+        tokenReceived,
+        serverConfigured: serverProvided,
+        serverUsed: Array.isArray(normalizedServer) ? normalizedServer.length > 0 : Boolean(normalizedServer),
+        tokenGeneratedForRoomId: zegoRoomId,
+        tokenGeneratedForUserID: zegoUserId,
+        streamID: zegoStreamId,
       });
 
       const { ZegoExpressEngine } = await import("zego-express-engine-webrtc");
       if (cancelled) return;
 
-      const zg = new ZegoExpressEngine(Number(zegoAccess.appID), zegoAccess.server || "");
+      let zg;
+      try {
+        zg = new ZegoExpressEngine(zegoAppId, normalizedServer);
+      } catch (engineError) {
+        const sdkError = getZegoSdkErrorDetails(engineError, "Zego engine initialization failed");
+        logZegoDebug("engine init fail", {
+          engineError: sdkError,
+          retriedWithoutServer: serverProvided,
+        });
+        if (serverProvided) {
+          try {
+            zg = new ZegoExpressEngine(zegoAppId, "");
+          } catch (fallbackEngineError) {
+            const fallbackError = getZegoSdkErrorDetails(fallbackEngineError, "Zego engine initialization failed");
+            updateDiagnostics({
+              engineExists: false,
+              sdkErrorCode: fallbackError.code,
+              sdkErrorMessage: fallbackError.message,
+            });
+            throw new Error("Unable to join video server.", { cause: fallbackEngineError });
+          }
+        } else {
+          updateDiagnostics({
+            engineExists: false,
+            sdkErrorCode: sdkError.code,
+            sdkErrorMessage: sdkError.message,
+          });
+          throw new Error("Unable to join video server.", { cause: engineError });
+        }
+      }
+
+      updateDiagnostics({ engineExists: Boolean(zg) });
+      logZegoDebug("engine initialized", {
+        engineExists: Boolean(zg),
+        sdkVersion: ZegoExpressEngine.version || zg?.getVersion?.(),
+      });
       zegoRef.current = zg;
-      localStreamIdRef.current = zegoAccess.streamID;
+      localStreamIdRef.current = zegoStreamId;
 
       const onRoomStateUpdate = (updatedRoomID, state, errorCode, extendedData) => {
         const stateText = String(state || "unknown").toUpperCase();
         logZegoDebug("roomStateUpdate", { updatedRoomID, state, errorCode, extendedData });
-        updateDiagnostics({ roomState: stateText, joinedRoom: joinedRoomRef.current });
+        updateDiagnostics({
+          roomState: stateText,
+          joinedRoom: joinedRoomRef.current,
+          sdkErrorCode: errorCode ? String(errorCode) : "",
+          sdkErrorMessage: errorCode ? String(extendedData || `SDK room error ${errorCode}`) : "",
+          lastLoginError: !joinedRoomRef.current && errorCode ? String(extendedData || `SDK room error ${errorCode}`) : "",
+        });
         if (stateText === "DISCONNECTED" || stateText === "CONNECTING") {
           setSafeCallState(CALL_STATES.reconnecting);
         }
@@ -750,7 +895,13 @@ const VideoCall = () => {
       const onRoomStateChanged = (updatedRoomID, reason, errorCode, extendedData) => {
         const reasonText = String(reason || "").toUpperCase();
         logZegoDebug("roomStateChanged", { updatedRoomID, reason, errorCode, extendedData });
-        updateDiagnostics({ roomState: reasonText || "unknown", joinedRoom: joinedRoomRef.current });
+        updateDiagnostics({
+          roomState: reasonText || "unknown",
+          joinedRoom: joinedRoomRef.current,
+          sdkErrorCode: errorCode ? String(errorCode) : "",
+          sdkErrorMessage: errorCode ? String(extendedData || `SDK room error ${errorCode}`) : "",
+          lastLoginError: !joinedRoomRef.current && errorCode ? String(extendedData || `SDK room error ${errorCode}`) : "",
+        });
         if (reasonText.includes("RECONNECT") || reasonText.includes("DISCONNECT") || reasonText.includes("BROKEN")) {
           setSafeCallState(CALL_STATES.reconnecting);
         }
@@ -762,9 +913,12 @@ const VideoCall = () => {
         logZegoDebug("publisherStateUpdate", result);
         const publisherState = String(result?.state || "").toUpperCase();
         if (result?.errorCode) {
+          const sdkError = getZegoSdkErrorDetails(result, `Publisher error ${result.errorCode}`);
           updateDiagnostics({
             localStreamPublished: false,
-            localPublishError: `Publisher error ${result.errorCode}`,
+            localPublishError: "Unable to publish local stream.",
+            sdkErrorCode: sdkError.code,
+            sdkErrorMessage: sdkError.message,
           });
           setSafeCallState("Unable to publish local stream.");
           return;
@@ -776,7 +930,12 @@ const VideoCall = () => {
       zg.on("playerStateUpdate", (result) => {
         logZegoDebug("playerStateUpdate", result);
         if (result?.errorCode) {
-          updateDiagnostics({ playerError: `Player error ${result.errorCode}` });
+          const sdkError = getZegoSdkErrorDetails(result, `Player error ${result.errorCode}`);
+          updateDiagnostics({
+            playerError: `Player error ${result.errorCode}`,
+            sdkErrorCode: sdkError.code,
+            sdkErrorMessage: sdkError.message,
+          });
         }
       });
       zg.on("roomStreamUpdate", (updatedRoomID, updateType, streamList = [], extendedData) => {
@@ -804,27 +963,76 @@ const VideoCall = () => {
 
       let joined;
       try {
-        joined = await zg.loginRoom(
-          zegoAccess.roomId,
-          zegoAccess.token,
-          { userID: zegoAccess.userID, userName: zegoAccess.userName || user?.name || zegoAccess.userID },
-          { userUpdate: true }
+        updateDiagnostics({
+          loginStarted: true,
+          loginSuccess: false,
+          loginError: "",
+          lastLoginError: "",
+          loginTimeout: false,
+          roomState: "LOGINING",
+        });
+        logZegoDebug("loginRoom start", {
+          appId: zegoAppId,
+          roomId: zegoRoomId,
+          userId: zegoUserId,
+          tokenReceived,
+          engineExists: Boolean(zg),
+        });
+        joined = await withTimeout(
+          zg.loginRoom(
+            zegoRoomId,
+            zegoToken,
+            { userID: zegoUserId, userName: zegoAccess.userName || user?.name || zegoUserId },
+            { userUpdate: true }
+          ),
+          ZEGO_LOGIN_TIMEOUT_MS,
+          () => {
+            const timeoutError = new Error("Unable to join video server.");
+            timeoutError.code = "LOGIN_TIMEOUT";
+            timeoutError.loginTimeout = true;
+            return timeoutError;
+          }
         );
       } catch (joinError) {
-        logZegoDebug("joinRoom fail", { joinError: summarizeZegoError(joinError) });
-        throw joinError;
+        const loginError = getZegoSdkErrorDetails(joinError, "Unable to join video server.");
+        const visibleMessage = joinError?.loginTimeout ? "Unable to join video server." : loginError.message || "Unable to join video server.";
+        updateDiagnostics({
+          loginSuccess: false,
+          loginError: visibleMessage,
+          lastLoginError: visibleMessage,
+          loginTimeout: Boolean(joinError?.loginTimeout),
+          sdkErrorCode: loginError.code,
+          sdkErrorMessage: loginError.message,
+        });
+        logZegoDebug("loginRoom fail", {
+          loginError,
+          loginTimeout: Boolean(joinError?.loginTimeout),
+        });
+        throw new Error(visibleMessage, { cause: joinError });
       }
 
       if (!joined) {
-        logZegoDebug("joinRoom fail", { reason: "loginRoom returned false" });
-        throw new Error("Failed to join Zego room.");
+        updateDiagnostics({
+          loginSuccess: false,
+          loginError: "Unable to join video server.",
+          lastLoginError: "loginRoom returned false",
+        });
+        logZegoDebug("loginRoom fail", { reason: "loginRoom returned false" });
+        throw new Error("Unable to join video server.");
       }
 
       joinedRoomRef.current = true;
-      updateDiagnostics({ joinedRoom: true, roomState: "joined" });
-      logZegoDebug("joinRoom success", {
-        roomId: zegoAccess.roomId,
-        currentUserId: zegoAccess.userID,
+      updateDiagnostics({
+        joinedRoom: true,
+        loginSuccess: true,
+        loginError: "",
+        lastLoginError: "",
+        loginTimeout: false,
+        roomState: "CONNECTED",
+      });
+      logZegoDebug("loginRoom success", {
+        roomId: zegoRoomId,
+        currentUserId: zegoUserId,
         currentUserRole: zegoAccess.currentUserRole,
       });
 
@@ -842,11 +1050,15 @@ const VideoCall = () => {
         throw streamError;
       }
 
-      const publishStarted = zg.startPublishingStream(zegoAccess.streamID, localStream);
-      updateDiagnostics({ localStreamPublished: Boolean(publishStarted) });
+      const publishStarted = zg.startPublishingStream(zegoStreamId, localStream);
+      updateDiagnostics({
+        localStreamPublished: false,
+        localPublishError: publishStarted ? "" : "Unable to publish local stream.",
+      });
       logZegoDebug("startPublishingStream", {
-        streamID: zegoAccess.streamID,
-        localStreamPublished: Boolean(publishStarted),
+        streamID: zegoStreamId,
+        localStreamPublished: false,
+        publishRequestStarted: Boolean(publishStarted),
       });
       if (!publishStarted) {
         updateDiagnostics({ localStreamPublished: false, localPublishError: "Unable to publish local stream." });
@@ -925,6 +1137,18 @@ const VideoCall = () => {
     return "Booked time is over. Closing the room now.";
   }, [booking, bookingEnd, callCountdown, joinCountdown, joinOpensAt, nowTick]);
 
+  const zegoDiagnosticItems = [
+    ["tokenReceived", callDiagnostics.tokenReceived],
+    ["loginStarted", callDiagnostics.loginStarted],
+    ["loginSuccess", callDiagnostics.loginSuccess],
+    ["loginTimeout", callDiagnostics.loginTimeout],
+    ["joinedRoom", callDiagnostics.joinedRoom],
+    ["localStreamCreated", callDiagnostics.localStreamCreated],
+    ["localPublished", callDiagnostics.localStreamPublished],
+    ["roomState", callDiagnostics.roomState],
+    ["sdkErrorCode", callDiagnostics.sdkErrorCode || "none"],
+  ];
+
   if (loading) {
     return (
       <div className="w-screen h-screen bg-slate-950 flex items-center justify-center text-white">
@@ -942,6 +1166,32 @@ const VideoCall = () => {
         <div className="max-w-xl rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center">
           <p className="text-xs font-bold uppercase tracking-[0.3em] text-red-300">Meeting unavailable</p>
           <h1 className="mt-4 text-3xl font-extrabold">{blockingError}</h1>
+          {(callDiagnostics.loginStarted || callDiagnostics.loginError || callDiagnostics.sdkErrorCode) && (
+            <div className="mt-5 rounded-2xl border border-white/10 bg-black/30 p-4 text-left">
+              <div className="flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                {zegoDiagnosticItems.map(([label, value]) => (
+                  <span key={label} className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                    {label} {String(value)}
+                  </span>
+                ))}
+              </div>
+              {callDiagnostics.lastLoginError && (
+                <p className="mt-3 text-xs font-semibold text-red-200">
+                  lastLoginError: {callDiagnostics.lastLoginError}
+                </p>
+              )}
+              {callDiagnostics.loginError && (
+                <p className="mt-2 text-xs font-semibold text-red-200">
+                  loginError: {callDiagnostics.loginError}
+                </p>
+              )}
+              {callDiagnostics.sdkErrorMessage && (
+                <p className="mt-2 text-xs font-semibold text-red-200">
+                  sdkErrorMessage: {callDiagnostics.sdkErrorMessage}
+                </p>
+              )}
+            </div>
+          )}
           <button
             type="button"
             onClick={() => navigate("/dashboard", { replace: true })}
@@ -1114,17 +1364,13 @@ const VideoCall = () => {
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
               {callDiagnostics.localStreamPublished ? "LOCAL_CONNECTED" : callDiagnostics.localStreamCreated ? "LOCAL_CREATED" : "LOCAL_PENDING"}
             </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-              localPublished {String(callDiagnostics.localStreamPublished)}
-            </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-              joinedRoom {String(callDiagnostics.joinedRoom)}
-            </span>
+            {zegoDiagnosticItems.map(([label, value]) => (
+              <span key={label} className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+                {label} {String(value)}
+              </span>
+            ))}
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
               remoteStreams {remoteStreamIds.length}
-            </span>
-            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-              roomState {callDiagnostics.roomState}
             </span>
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
               {currentUserRole}
@@ -1139,6 +1385,21 @@ const VideoCall = () => {
         {callDiagnostics.playerError && (
           <p className="mt-2 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">
             Player error: {callDiagnostics.playerError}
+          </p>
+        )}
+        {callDiagnostics.loginError && (
+          <p className="mt-2 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">
+            loginError: {callDiagnostics.loginError}
+          </p>
+        )}
+        {callDiagnostics.lastLoginError && (
+          <p className="mt-2 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">
+            lastLoginError: {callDiagnostics.lastLoginError}
+          </p>
+        )}
+        {callDiagnostics.sdkErrorMessage && (
+          <p className="mt-2 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">
+            sdkErrorMessage: {callDiagnostics.sdkErrorMessage}
           </p>
         )}
       </div>
