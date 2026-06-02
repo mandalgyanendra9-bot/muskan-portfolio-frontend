@@ -14,6 +14,8 @@ const API_URL = import.meta.env.VITE_API_URL || "";
 const CALL_JOIN_EARLY_MINUTES = 30;
 const CONSENT_STORAGE_PREFIX = "video-call-consent";
 const ZEGO_LOGIN_TIMEOUT_MS = 10000;
+const DEFAULT_ZEGO_WEB_SERVER = "wss://webliveroom-api.zegocloud.com/ws";
+const FRONTEND_ZEGO_WEB_SERVER = import.meta.env.VITE_ZEGO_SERVER || import.meta.env.VITE_ZEGO_SERVER_URL || "";
 
 const CALL_STATES = {
   checking: "Checking camera/microphone...",
@@ -79,6 +81,20 @@ const normalizeZegoServer = (server) => {
   }
 
   return normalizeOne(server);
+};
+
+const getZegoEngineServer = (zegoAccess = {}) => {
+  const backendServer = normalizeZegoServer(zegoAccess.server);
+  if (Array.isArray(backendServer) ? backendServer.length > 0 : Boolean(backendServer)) {
+    return { server: backendServer, source: "backend" };
+  }
+
+  const frontendServer = normalizeZegoServer(FRONTEND_ZEGO_WEB_SERVER);
+  if (frontendServer) {
+    return { server: frontendServer, source: "frontend_env" };
+  }
+
+  return { server: DEFAULT_ZEGO_WEB_SERVER, source: "default" };
 };
 
 const withTimeout = (promise, ms, createTimeoutError) => {
@@ -197,6 +213,8 @@ const VideoCall = () => {
     engineExists: false,
     appIdExists: false,
     roomIdExists: false,
+    engineServerConfigured: false,
+    engineServerSource: "",
     localStreamCreated: false,
     localStreamPublished: false,
     localPublishError: "",
@@ -737,6 +755,8 @@ const VideoCall = () => {
         engineExists: false,
         appIdExists: false,
         roomIdExists: false,
+        engineServerConfigured: false,
+        engineServerSource: "",
         localStreamCreated: false,
         localStreamPublished: false,
         localPublishError: "",
@@ -782,10 +802,8 @@ const VideoCall = () => {
         token: zegoToken,
       } = getZegoAccessIds(zegoAccess);
       const zegoStreamId = String(zegoAccess.streamID || zegoAccess.streamId || "");
-      const normalizedServer = normalizeZegoServer(zegoAccess.server);
-      const serverProvided = Array.isArray(zegoAccess.server)
-        ? zegoAccess.server.some((server) => String(server || "").trim())
-        : Boolean(String(zegoAccess.server || "").trim());
+      const { server: engineServer, source: engineServerSource } = getZegoEngineServer(zegoAccess);
+      const engineServerConfigured = Array.isArray(engineServer) ? engineServer.length > 0 : Boolean(engineServer);
       const tokenReceived = Boolean(zegoToken);
       const appIdExists = Number.isSafeInteger(zegoAppId) && zegoAppId > 0;
       const roomIdExists = Boolean(zegoRoomId);
@@ -794,6 +812,8 @@ const VideoCall = () => {
         tokenReceived,
         appIdExists,
         roomIdExists,
+        engineServerConfigured,
+        engineServerSource,
         loginError: "",
         lastLoginError: "",
       });
@@ -804,12 +824,12 @@ const VideoCall = () => {
         roomId: zegoRoomId,
         userId: zegoUserId,
         tokenReceived,
-        serverConfigured: serverProvided,
-        serverUsed: Array.isArray(normalizedServer) ? normalizedServer.length > 0 : Boolean(normalizedServer),
+        engineServerConfigured,
+        engineServerSource,
         streamID: zegoStreamId,
       });
 
-      if (zegoAccess.success === false || !tokenReceived || !appIdExists || !roomIdExists || !zegoUserId || !zegoStreamId) {
+      if (zegoAccess.success === false || !tokenReceived || !appIdExists || !roomIdExists || !zegoUserId || !zegoStreamId || !engineServerConfigured) {
         throw new Error("Unable to join video server.");
       }
       if (zegoUserId !== currentUserId) {
@@ -825,8 +845,8 @@ const VideoCall = () => {
         appIdExists,
         roomIdExists,
         tokenReceived,
-        serverConfigured: serverProvided,
-        serverUsed: Array.isArray(normalizedServer) ? normalizedServer.length > 0 : Boolean(normalizedServer),
+        engineServerConfigured,
+        engineServerSource,
         tokenGeneratedForRoomId: zegoRoomId,
         tokenGeneratedForUserID: zegoUserId,
         streamID: zegoStreamId,
@@ -837,38 +857,27 @@ const VideoCall = () => {
 
       let zg;
       try {
-        zg = new ZegoExpressEngine(zegoAppId, normalizedServer);
+        zg = new ZegoExpressEngine(zegoAppId, engineServer);
       } catch (engineError) {
         const sdkError = getZegoSdkErrorDetails(engineError, "Zego engine initialization failed");
         logZegoDebug("engine init fail", {
           engineError: sdkError,
-          retriedWithoutServer: serverProvided,
+          engineServerConfigured,
+          engineServerSource,
         });
-        if (serverProvided) {
-          try {
-            zg = new ZegoExpressEngine(zegoAppId, "");
-          } catch (fallbackEngineError) {
-            const fallbackError = getZegoSdkErrorDetails(fallbackEngineError, "Zego engine initialization failed");
-            updateDiagnostics({
-              engineExists: false,
-              sdkErrorCode: fallbackError.code,
-              sdkErrorMessage: fallbackError.message,
-            });
-            throw new Error("Unable to join video server.", { cause: fallbackEngineError });
-          }
-        } else {
-          updateDiagnostics({
-            engineExists: false,
-            sdkErrorCode: sdkError.code,
-            sdkErrorMessage: sdkError.message,
-          });
-          throw new Error("Unable to join video server.", { cause: engineError });
-        }
+        updateDiagnostics({
+          engineExists: false,
+          sdkErrorCode: sdkError.code,
+          sdkErrorMessage: sdkError.message,
+        });
+        throw new Error("Unable to join video server.", { cause: engineError });
       }
 
       updateDiagnostics({ engineExists: Boolean(zg) });
       logZegoDebug("engine initialized", {
         engineExists: Boolean(zg),
+        engineServerConfigured,
+        engineServerSource,
         sdkVersion: ZegoExpressEngine.version || zg?.getVersion?.(),
       });
       zegoRef.current = zg;
@@ -1143,6 +1152,8 @@ const VideoCall = () => {
     ["loginSuccess", callDiagnostics.loginSuccess],
     ["loginTimeout", callDiagnostics.loginTimeout],
     ["joinedRoom", callDiagnostics.joinedRoom],
+    ["engineServerConfigured", callDiagnostics.engineServerConfigured],
+    ["engineServerSource", callDiagnostics.engineServerSource || "none"],
     ["localStreamCreated", callDiagnostics.localStreamCreated],
     ["localPublished", callDiagnostics.localStreamPublished],
     ["roomState", callDiagnostics.roomState],
