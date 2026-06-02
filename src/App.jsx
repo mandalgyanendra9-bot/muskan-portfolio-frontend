@@ -16,6 +16,7 @@ const Contact = lazy(() => import("./pages/Contact"));
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const BookingDetails = lazy(() => import("./pages/BookingDetails"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Messages = lazy(() => import("./pages/Messages"));
 const ManageProjects = lazy(() => import("./pages/ManageProjects"));
@@ -137,6 +138,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/booking/:bookingId"
+              element={
+                <ProtectedRoute>
+                  <BookingDetails />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/booking-success/:bookingId"
+              element={
+                <ProtectedRoute>
+                  <BookingDetails />
                 </ProtectedRoute>
               }
             />

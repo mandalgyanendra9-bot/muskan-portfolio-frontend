@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import { useNavigate } from "react-router-dom";
 import SlotPicker from "./SlotPicker";
 import PaymentButton from "./PaymentButton";
 import { motion, AnimatePresence } from "framer-motion";
@@ -24,6 +25,7 @@ const formatMoney = (value = 0) =>
 
 const BookingModal = ({ expert, onClose }) => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const initialDuration = Math.min(getDurationMinutes(expert), 60) || 5;
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [bookingData, setBookingData] = useState({
@@ -141,9 +143,9 @@ const BookingModal = ({ expert, onClose }) => {
           {selectedSlot ? (
             <PaymentButton
               bookingData={bookingData}
-              onSuccess={() => {
+              onSuccess={(booking) => {
                 onClose();
-                window.location.href = "/dashboard";
+                navigate(`/booking-success/${booking._id}`, { state: { booking } });
               }}
             />
           ) : (

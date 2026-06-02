@@ -7,6 +7,8 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 import { resolveProfilePhotoUrl } from "../utils/profilePhoto";
+import BookingJoinAction from "../components/BookingJoinAction";
+import { getBookingEndDate, getBookingJoinState } from "../utils/bookingTime";
 
 const money = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -35,24 +37,12 @@ const getBookingStart = (booking = {}) => booking.slotStart || booking.date || b
 const getBookingDurationMinutes = (booking = {}) => Number(booking.durationMinutes || booking.duration || 0);
 const getBookingAmount = (booking = {}) => Number(booking.totalAmount || booking.totalPrice || 0);
 const getExpertMinuteRate = (expert = {}) => Number(expert.perMinuteRate || expert.pricePerMinute || 0);
-const JOIN_ROOM_EARLY_MINUTES = 30;
-const JOIN_ROOM_GRACE_MINUTES = 5;
 const getBookingEndTime = (booking = {}) => {
-  if (booking.slotEnd) return new Date(booking.slotEnd).getTime();
+  const endDate = getBookingEndDate(booking);
+  if (endDate) return endDate.getTime();
   const start = new Date(getBookingStart(booking)).getTime();
   const durationMs = getBookingDurationMinutes(booking) * 60 * 1000;
   return Number.isFinite(start) ? start + durationMs : 0;
-};
-const canShowJoinRoom = (booking = {}, now = Date.now()) => {
-  const start = new Date(getBookingStart(booking)).getTime();
-  const end = getBookingEndTime(booking);
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
-  return (
-    booking.status === "confirmed" &&
-    booking.paymentStatus === "paid" &&
-    now >= start - JOIN_ROOM_EARLY_MINUTES * 60 * 1000 &&
-    now <= end + JOIN_ROOM_GRACE_MINUTES * 60 * 1000
-  );
 };
 
 const getInitialPayoutForm = (user = {}) => ({
@@ -382,11 +372,15 @@ const Dashboard = () => {
     if (bookingFilter === "all") return true;
     return b.status === bookingFilter;
   });
-  const clientVisibleBookings = bookings.filter((b) => (
-    b.status === "confirmed" &&
-    b.paymentStatus === "paid" &&
-    getBookingEndTime(b) >= nowTick
-  ));
+  const clientVisibleBookings = bookings.filter((b) => {
+    const joinState = getBookingJoinState(b, user, nowTick);
+    return (
+      joinState.isClient &&
+      joinState.paymentStatus === "paid" &&
+      joinState.isConfirmed &&
+      getBookingEndTime(b) >= nowTick
+    );
+  });
 
   return (
     <div className="min-h-screen bg-surface flex flex-col">
@@ -754,15 +748,20 @@ const Dashboard = () => {
                                   </button>
                                 </>
                               )}
-                              {canShowJoinRoom(b, nowTick) && (
+                              {(b.paymentStatus === "paid" || b.status === "confirmed" || b.bookingStatus === "confirmed") && (
                                 <>
+                                  <BookingJoinAction booking={b} user={user} now={nowTick} onJoin={handleJoinCall} />
                                   <button
+                                    type="button"
+                                    hidden
                                     onClick={() => handleJoinCall(b)}
                                     className="flex-1 bg-primary-500 hover:bg-primary-600 text-white font-bold py-3 px-4 rounded-xl text-xs transition-all active:scale-95 flex items-center justify-center gap-1 shadow-lg shadow-primary-500/20 animate-pulse"
                                   >
                                     📹 Join Room
                                   </button>
                                   <button
+                                    type="button"
+                                    hidden={!getBookingJoinState(b, user, nowTick).canJoin}
                                     onClick={() => handleUpdateBookingStatus(b._id, "completed")}
                                     className="flex-1 bg-white/5 hover:bg-white/10 text-white border border-white/10 font-bold py-3 px-4 rounded-xl text-xs transition-all active:scale-95"
                                   >
@@ -771,6 +770,14 @@ const Dashboard = () => {
                                 </>
                               )}
                               
+                              {b.paymentStatus === "paid" && (
+                                <button
+                                  onClick={() => navigate(`/booking/${b._id}`, { state: { booking: b } })}
+                                  className="flex-1 bg-white/5 hover:bg-white/10 text-slate-300 font-bold py-3 px-4 rounded-xl text-xs border border-white/10"
+                                >
+                                  View Details
+                                </button>
+                              )}
                               {b.paymentStatus === "paid" && (
                                 <button
                                   onClick={() => setSelectedInvoice(b)}
@@ -1147,13 +1154,18 @@ const Dashboard = () => {
                             </div>
 
                             <div className="flex md:flex-col gap-2 w-full md:w-auto">
-                              {canShowJoinRoom(b, nowTick) && (
+                              {(b.paymentStatus === "paid" || b.status === "confirmed" || b.bookingStatus === "confirmed") && (
+                                <>
+                                  <BookingJoinAction booking={b} user={user} now={nowTick} onJoin={handleJoinCall} />
                                 <button
+                                  type="button"
+                                  hidden
                                   onClick={() => handleJoinCall(b)}
                                   className="flex-1 bg-primary-500 hover:bg-primary-600 text-white font-bold py-3.5 px-6 rounded-xl text-xs transition-all active:scale-95 flex items-center justify-center gap-1 shadow-lg shadow-primary-500/20 animate-pulse"
                                 >
                                   📹 Join Room
                                 </button>
+                                </>
                               )}
                               
                               {b.status === "pending" && (
@@ -1171,6 +1183,15 @@ const Dashboard = () => {
                                   className="flex-1 bg-yellow-500 hover:bg-yellow-600 text-slate-950 font-bold py-3 px-4 rounded-xl text-xs transition-all active:scale-95"
                                 >
                                   ⭐ Write a Review
+                                </button>
+                              )}
+
+                              {b.paymentStatus === "paid" && (
+                                <button
+                                  onClick={() => navigate(`/booking/${b._id}`, { state: { booking: b } })}
+                                  className="flex-1 bg-white/5 hover:bg-white/10 text-slate-300 font-bold py-3 px-4 rounded-xl text-xs border border-white/10"
+                                >
+                                  View Details
                                 </button>
                               )}
 

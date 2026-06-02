@@ -146,8 +146,11 @@ const VideoCall = () => {
   const [callState, setCallState] = useState(CALL_STATES.waiting);
   const [remoteStreamIds, setRemoteStreamIds] = useState([]);
   const [callDiagnostics, setCallDiagnostics] = useState({
+    joinedRoom: false,
     localStreamCreated: false,
     localStreamPublished: false,
+    localPublishError: "",
+    roomState: "idle",
     playerError: "",
   });
   const { enabled: watermarkEnabled } = useWatermarkProtectionEnabled();
@@ -170,7 +173,7 @@ const VideoCall = () => {
   const graceEndsAt = callAccess?.graceEndsAt ? new Date(callAccess.graceEndsAt).getTime() : bookingEnd;
   const canJoinNow = Boolean(
     booking &&
-      booking.status === "confirmed" &&
+      (booking.status === "confirmed" || booking.bookingStatus === "confirmed") &&
       booking.paymentStatus === "paid" &&
       nowTick >= joinOpensAt &&
       nowTick < bookingEnd &&
@@ -672,8 +675,11 @@ const VideoCall = () => {
 
     const initializeCall = async () => {
       updateDiagnostics({
+        joinedRoom: false,
         localStreamCreated: false,
         localStreamPublished: false,
+        localPublishError: "",
+        roomState: "checking",
         playerError: "",
         remoteStreamsCount: 0,
         remoteStreamIDs: [],
@@ -716,6 +722,7 @@ const VideoCall = () => {
       setSafeCallState(CALL_STATES.joining);
       logZegoDebug("zego config received", {
         appID: zegoAccess.appID,
+        serverConfigured: Boolean(zegoAccess.server),
         tokenGeneratedForRoomId: zegoAccess.roomId,
         tokenGeneratedForUserID: zegoAccess.userID,
         streamID: zegoAccess.streamID,
@@ -724,16 +731,18 @@ const VideoCall = () => {
       const { ZegoExpressEngine } = await import("zego-express-engine-webrtc");
       if (cancelled) return;
 
-      const zg = new ZegoExpressEngine(Number(zegoAccess.appID), zegoAccess.server || undefined);
+      const zg = new ZegoExpressEngine(Number(zegoAccess.appID), zegoAccess.server || "");
       zegoRef.current = zg;
       localStreamIdRef.current = zegoAccess.streamID;
 
       const onRoomStateUpdate = (updatedRoomID, state, errorCode, extendedData) => {
+        const stateText = String(state || "unknown").toUpperCase();
         logZegoDebug("roomStateUpdate", { updatedRoomID, state, errorCode, extendedData });
-        if (state === "DISCONNECTED" || state === "CONNECTING") {
+        updateDiagnostics({ roomState: stateText, joinedRoom: joinedRoomRef.current });
+        if (stateText === "DISCONNECTED" || stateText === "CONNECTING") {
           setSafeCallState(CALL_STATES.reconnecting);
         }
-        if (state === "CONNECTED" && remoteStreamsRef.current.size > 0) {
+        if (stateText === "CONNECTED" && remoteStreamsRef.current.size > 0) {
           setSafeCallState(CALL_STATES.connected);
         }
       };
@@ -741,6 +750,7 @@ const VideoCall = () => {
       const onRoomStateChanged = (updatedRoomID, reason, errorCode, extendedData) => {
         const reasonText = String(reason || "").toUpperCase();
         logZegoDebug("roomStateChanged", { updatedRoomID, reason, errorCode, extendedData });
+        updateDiagnostics({ roomState: reasonText || "unknown", joinedRoom: joinedRoomRef.current });
         if (reasonText.includes("RECONNECT") || reasonText.includes("DISCONNECT") || reasonText.includes("BROKEN")) {
           setSafeCallState(CALL_STATES.reconnecting);
         }
@@ -750,8 +760,17 @@ const VideoCall = () => {
       zg.on("roomStateChanged", onRoomStateChanged);
       zg.on("publisherStateUpdate", (result) => {
         logZegoDebug("publisherStateUpdate", result);
-        if (result?.state === "PUBLISHING") {
-          updateDiagnostics({ localStreamPublished: true });
+        const publisherState = String(result?.state || "").toUpperCase();
+        if (result?.errorCode) {
+          updateDiagnostics({
+            localStreamPublished: false,
+            localPublishError: `Publisher error ${result.errorCode}`,
+          });
+          setSafeCallState("Unable to publish local stream.");
+          return;
+        }
+        if (["PUBLISHING", "PUBLISHED", "PUBLISH_SUCC", "PUBLISH_SUCCESS"].includes(publisherState)) {
+          updateDiagnostics({ localStreamPublished: true, localPublishError: "" });
         }
       });
       zg.on("playerStateUpdate", (result) => {
@@ -802,6 +821,7 @@ const VideoCall = () => {
       }
 
       joinedRoomRef.current = true;
+      updateDiagnostics({ joinedRoom: true, roomState: "joined" });
       logZegoDebug("joinRoom success", {
         roomId: zegoAccess.roomId,
         currentUserId: zegoAccess.userID,
@@ -829,7 +849,8 @@ const VideoCall = () => {
         localStreamPublished: Boolean(publishStarted),
       });
       if (!publishStarted) {
-        throw new Error("Failed to publish local stream.");
+        updateDiagnostics({ localStreamPublished: false, localPublishError: "Unable to publish local stream." });
+        throw new Error("Unable to publish local stream.");
       }
 
       setSafeCallState(remoteStreamsRef.current.size > 0 ? CALL_STATES.connected : CALL_STATES.waiting);
@@ -1091,16 +1112,30 @@ const VideoCall = () => {
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
-              Local {callDiagnostics.localStreamPublished ? "published" : callDiagnostics.localStreamCreated ? "created" : "pending"}
+              {callDiagnostics.localStreamPublished ? "LOCAL_CONNECTED" : callDiagnostics.localStreamCreated ? "LOCAL_CREATED" : "LOCAL_PENDING"}
+            </span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+              localPublished {String(callDiagnostics.localStreamPublished)}
+            </span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+              joinedRoom {String(callDiagnostics.joinedRoom)}
             </span>
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
               remoteStreams {remoteStreamIds.length}
+            </span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+              roomState {callDiagnostics.roomState}
             </span>
             <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
               {currentUserRole}
             </span>
           </div>
         </div>
+        {callDiagnostics.localPublishError && (
+          <p className="mt-2 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">
+            {callDiagnostics.localPublishError}
+          </p>
+        )}
         {callDiagnostics.playerError && (
           <p className="mt-2 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">
             Player error: {callDiagnostics.playerError}
@@ -1121,7 +1156,7 @@ const VideoCall = () => {
               <div className="max-w-sm rounded-2xl border border-white/10 bg-slate-950/70 px-5 py-4 shadow-2xl backdrop-blur-md">
                 <p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-300">{callState}</p>
                 <p className="mt-2 text-sm text-slate-300">
-                  Your local preview stays visible while the other participant publishes their stream.
+                  Waiting for participant to join and publish video.
                 </p>
               </div>
             </div>
