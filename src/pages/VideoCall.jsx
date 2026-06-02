@@ -14,6 +14,16 @@ const API_URL = import.meta.env.VITE_API_URL || "";
 const CALL_JOIN_EARLY_MINUTES = 30;
 const CONSENT_STORAGE_PREFIX = "video-call-consent";
 
+const CALL_STATES = {
+  checking: "Checking camera/microphone...",
+  joining: "Joining room...",
+  publishing: "Publishing your video...",
+  waiting: "Waiting for the other participant...",
+  connected: "Connected",
+  reconnecting: "Reconnecting...",
+  remoteFailed: "Remote video failed to play",
+};
+
 const formatDuration = (totalSeconds = 0) => {
   const safeSeconds = Math.max(0, Math.floor(totalSeconds));
   const hours = Math.floor(safeSeconds / 3600);
@@ -27,12 +37,99 @@ const formatDuration = (totalSeconds = 0) => {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 };
 
+const getIdString = (value) => {
+  if (!value) return "";
+  return String(value?._id || value);
+};
+
+const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const getStreamID = (stream) => String(stream?.streamID || stream?.streamId || stream?.id || stream || "");
+
+const summarizeZegoError = (error) => ({
+  code: error?.code ?? error?.errorCode ?? null,
+  message: error?.message || error?.msg || String(error || "Unknown Zego error"),
+});
+
+const sanitizeZegoDetails = (details = {}) => {
+  const hiddenKeys = new Set(["token", "serverSecret", "secret", "kitToken"]);
+  return Object.entries(details).reduce((safe, [key, value]) => {
+    if (!hiddenKeys.has(key)) safe[key] = value;
+    return safe;
+  }, {});
+};
+
+const stopMediaStreamTracks = (stream) => {
+  if (!stream?.getTracks) return;
+  stream.getTracks().forEach((track) => {
+    try {
+      track.stop();
+    } catch {
+      // SDK cleanup can stop a track first; duplicate stops are harmless.
+    }
+  });
+};
+
+const stopLocalMediaTracks = () => {
+  if (typeof document === "undefined") return;
+  document.querySelectorAll("video, audio").forEach((mediaElement) => {
+    const stream = mediaElement.srcObject;
+    if (stream?.getTracks) {
+      stopMediaStreamTracks(stream);
+      mediaElement.srcObject = null;
+    }
+  });
+};
+
+const styleVideoElements = (container) => {
+  if (!container?.querySelectorAll) return;
+  container.querySelectorAll("video").forEach((video) => {
+    video.autoplay = true;
+    video.playsInline = true;
+    video.style.width = "100%";
+    video.style.height = "100%";
+    video.style.objectFit = "cover";
+    video.style.background = "#020617";
+  });
+};
+
+const attachMediaStreamToContainer = async (container, stream, { muted = false } = {}) => {
+  if (!container || !stream) return null;
+  container.innerHTML = "";
+
+  const video = document.createElement("video");
+  video.autoplay = true;
+  video.playsInline = true;
+  video.muted = muted;
+  video.srcObject = stream;
+  video.style.width = "100%";
+  video.style.height = "100%";
+  video.style.objectFit = "cover";
+  video.style.background = "#020617";
+  container.appendChild(video);
+
+  try {
+    await video.play();
+  } catch {
+    // Autoplay can be blocked on some mobile browsers; the stream remains attached.
+  }
+
+  return video;
+};
+
 const VideoCall = () => {
   const { roomId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const meetingContainerRef = useRef(null);
+  const localPreviewRef = useRef(null);
+  const remoteVideoRef = useRef(null);
   const zegoRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const localStreamIdRef = useRef("");
+  const localViewRef = useRef(null);
+  const remoteStreamsRef = useRef(new Map());
+  const remoteViewsRef = useRef(new Map());
+  const joinedRoomRef = useRef(false);
   const joinTimerRef = useRef(null);
   const autoEndTriggeredRef = useRef(false);
   const endingRef = useRef(false);
@@ -46,7 +143,26 @@ const VideoCall = () => {
   const [error, setError] = useState("");
   const [acceptedConsentKey, setAcceptedConsentKey] = useState("");
   const [reporting, setReporting] = useState(false);
+  const [callState, setCallState] = useState(CALL_STATES.waiting);
+  const [remoteStreamIds, setRemoteStreamIds] = useState([]);
+  const [callDiagnostics, setCallDiagnostics] = useState({
+    localStreamCreated: false,
+    localStreamPublished: false,
+    playerError: "",
+  });
   const { enabled: watermarkEnabled } = useWatermarkProtectionEnabled();
+
+  const currentUserId = getIdString(user?._id);
+  const bookingClientId = getIdString(booking?.clientId || booking?.client);
+  const bookingExpertId = getIdString(booking?.expertId || booking?.expert);
+  const currentUserRole = useMemo(() => {
+    if (!currentUserId) return "unknown";
+    if (bookingClientId && currentUserId === bookingClientId) return "client";
+    if (bookingExpertId && currentUserId === bookingExpertId) return "expert";
+    return user?.role || "unknown";
+  }, [bookingClientId, bookingExpertId, currentUserId, user?.role]);
+  const remoteVideoMountId = useMemo(() => `zego-remote-${String(roomId || "").replace(/[^a-zA-Z0-9_-]/g, "")}`, [roomId]);
+  const localVideoMountId = useMemo(() => `zego-local-${String(roomId || "").replace(/[^a-zA-Z0-9_-]/g, "")}`, [roomId]);
 
   const bookingStart = booking?.slotStart ? new Date(booking.slotStart).getTime() : 0;
   const bookingEnd = booking?.slotEnd ? new Date(booking.slotEnd).getTime() : 0;
@@ -72,11 +188,11 @@ const VideoCall = () => {
       )
   );
   const otherParticipant = booking
-    ? String(booking.client?._id || booking.client) === String(user?._id)
+    ? bookingClientId === currentUserId
       ? booking.expert
       : booking.client
     : null;
-  const otherParticipantId = otherParticipant?._id || otherParticipant;
+  const otherParticipantId = getIdString(otherParticipant);
   const otherParticipantName = otherParticipant?.name || "Other participant";
   const otherParticipantEmail = otherParticipant?.email || "No email available";
   const otherParticipantContact =
@@ -111,17 +227,116 @@ const VideoCall = () => {
   }, [booking]);
   const bookingId = booking?._id || "";
 
+  const participantValidation = useMemo(() => {
+    if (!booking) return { valid: false, message: "Loading meeting" };
+    if (!currentUserId) return { valid: false, message: "Missing current user ID. Please log in again." };
+    if (!bookingClientId || !bookingExpertId) return { valid: false, message: "Meeting participant IDs are missing." };
+    if (bookingClientId === bookingExpertId) {
+      return { valid: false, message: "Client and expert cannot share the same Zego user ID." };
+    }
+    if (currentUserRole !== "client" && currentUserRole !== "expert") {
+      return { valid: false, message: "Current user is not a participant in this meeting." };
+    }
+    return { valid: true, message: "" };
+  }, [booking, bookingClientId, bookingExpertId, currentUserId, currentUserRole]);
+  const blockingError = error || (
+    booking && !participantValidation.valid && participantValidation.message !== "Loading meeting"
+      ? participantValidation.message
+      : ""
+  );
+
+  const logZegoDebug = useCallback((event, details = {}) => {
+    console.info("[Zego Video]", {
+      event,
+      roomId,
+      currentUserId,
+      currentUserRole,
+      ...sanitizeZegoDetails(details),
+    });
+  }, [currentUserId, currentUserRole, roomId]);
+
+  const updateDiagnostics = useCallback((patch) => {
+    setCallDiagnostics((current) => ({ ...current, ...patch }));
+  }, []);
+
+  const cleanupZegoCall = useCallback(() => {
+    const zg = zegoRef.current;
+
+    remoteViewsRef.current.forEach((view) => {
+      try {
+        view?.destroy?.();
+      } catch {
+        // View cleanup is best effort; stream cleanup below is the source of truth.
+      }
+    });
+    remoteViewsRef.current.clear();
+
+    remoteStreamsRef.current.forEach(({ stream }, streamID) => {
+      try {
+        zg?.stopPlayingStream?.(streamID);
+      } catch {
+        // The SDK may already be disconnected during teardown.
+      }
+      stopMediaStreamTracks(stream);
+    });
+    remoteStreamsRef.current.clear();
+
+    if (localStreamIdRef.current) {
+      try {
+        zg?.stopPublishingStream?.(localStreamIdRef.current);
+      } catch {
+        // Publishing may already be stopped.
+      }
+    }
+
+    try {
+      localViewRef.current?.destroy?.();
+    } catch {
+      // Local preview view may already be detached.
+    }
+
+    if (localStreamRef.current) {
+      try {
+        zg?.destroyStream?.(localStreamRef.current);
+      } catch {
+        stopMediaStreamTracks(localStreamRef.current);
+      }
+    }
+
+    if (joinedRoomRef.current) {
+      try {
+        zg?.logoutRoom?.(roomId);
+      } catch {
+        // Logout can fail if the engine has already disconnected.
+      }
+    }
+
+    try {
+      zg?.destroyEngine?.();
+    } catch {
+      // Some SDK builds expose destroyEngine only after full initialization.
+    }
+
+    zegoRef.current = null;
+    localStreamRef.current = null;
+    localStreamIdRef.current = "";
+    joinedRoomRef.current = false;
+    localViewRef.current = null;
+
+    if (localPreviewRef.current) localPreviewRef.current.innerHTML = "";
+    if (remoteVideoRef.current) remoteVideoRef.current.innerHTML = "";
+
+    stopLocalMediaTracks();
+  }, [roomId]);
+
   const handleLeaveRoom = useCallback(() => {
     if (suppressLeaveCallbackRef.current) {
       suppressLeaveCallbackRef.current = false;
       return;
     }
-    if (zegoRef.current) {
-      zegoRef.current.destroy();
-      zegoRef.current = null;
-    }
+    cleanupZegoCall();
     navigate("/dashboard", { replace: true });
-  }, [navigate]);
+  }, [cleanupZegoCall, navigate]);
 
   const completeCall = useCallback(async () => {
     if (!roomId || endingRef.current || autoEndTriggeredRef.current) return;
@@ -131,10 +346,7 @@ const VideoCall = () => {
 
     try {
       suppressLeaveCallbackRef.current = true;
-      if (zegoRef.current) {
-        zegoRef.current.destroy();
-        zegoRef.current = null;
-      }
+      cleanupZegoCall();
 
       const token = localStorage.getItem("token");
       const { data } = await axios.put(
@@ -156,7 +368,7 @@ const VideoCall = () => {
       setEnding(false);
       endingRef.current = false;
     }
-  }, [navigate, roomId]);
+  }, [cleanupZegoCall, navigate, roomId]);
 
   const acceptConsent = useCallback(() => {
     if (!consentStorageKey) return;
@@ -273,6 +485,15 @@ const VideoCall = () => {
   }, [navigate, roomId, user]);
 
   useEffect(() => {
+    if (!booking || participantValidation.valid || participantValidation.message === "Loading meeting") return;
+    logZegoDebug("userID validation failed", {
+      bookingClientId,
+      bookingExpertId,
+      validationMessage: participantValidation.message,
+    });
+  }, [booking, bookingClientId, bookingExpertId, logZegoDebug, participantValidation]);
+
+  useEffect(() => {
     const timer = window.setInterval(() => {
       setNowTick(Date.now());
     }, 1000);
@@ -280,78 +501,374 @@ const VideoCall = () => {
     return () => window.clearInterval(timer);
   }, []);
 
+  useEffect(() => () => {
+    cleanupZegoCall();
+  }, [cleanupZegoCall]);
+
   useEffect(() => {
-    if (loading || !booking || !callAccess) return undefined;
+    if (loading || error || !booking || !callAccess) return undefined;
 
     if (isAfterBookedTime && booking.status !== "completed" && !autoEndTriggeredRef.current) {
       completeCall();
       return undefined;
     }
 
-    if (isAfterBookedTime || !canJoinNow || !consentAccepted || zegoRef.current || !meetingContainerRef.current) return undefined;
+    if (
+      isAfterBookedTime ||
+      !canJoinNow ||
+      !consentAccepted ||
+      zegoRef.current ||
+      !localPreviewRef.current ||
+      !remoteVideoRef.current ||
+      !participantValidation.valid
+    ) {
+      return undefined;
+    }
 
     let cancelled = false;
 
-    const initializeCall = async () => {
-      const { ZegoUIKitPrebuilt } = await import("@zegocloud/zego-uikit-prebuilt");
-      if (cancelled) return;
+    const setSafeCallState = (nextState) => {
+      if (!cancelled) setCallState(nextState);
+    };
 
-      const appID = Number(import.meta.env.VITE_ZEGO_APP_ID) || 1618361093;
-      const serverSecret = import.meta.env.VITE_ZEGO_SERVER_SECRET || "87245bdcc3539e0839e44ffc91bbfcb2";
+    const setSafeRemoteStreamIds = () => {
+      if (!cancelled) setRemoteStreamIds(Array.from(remoteStreamsRef.current.keys()));
+    };
 
-      if (!import.meta.env.VITE_ZEGO_APP_ID) {
-        toast("Running in Demo Mode. Set VITE_ZEGO_APP_ID in .env for production.", { icon: "info" });
+    const createLocalStream = async (zg) => {
+      const streamOptions = {
+        camera: {
+          video: true,
+          audio: true,
+        },
+      };
+      if (typeof zg.createStream === "function") {
+        return zg.createStream(streamOptions);
+      }
+      if (typeof zg.createZegoStream === "function") {
+        return zg.createZegoStream(streamOptions);
+      }
+      throw new Error("Zego createStream API is unavailable");
+    };
+
+    const renderLocalPreview = async (zg, localStream) => {
+      const container = localPreviewRef.current;
+      if (!container) return;
+      container.innerHTML = "";
+
+      if (typeof localStream?.playVideo === "function") {
+        await localStream.playVideo(container, { objectFit: "cover", mirror: true });
+        styleVideoElements(container);
+        return;
+      }
+
+      if (typeof zg.createLocalStreamView === "function") {
+        const localView = zg.createLocalStreamView(localStream);
+        localViewRef.current = localView;
+        await localView.play(container, { objectFit: "cover" });
+        styleVideoElements(container);
+        return;
+      }
+
+      await attachMediaStreamToContainer(container, localStream, { muted: true });
+    };
+
+    const removeRemoteStream = (zg, streamID) => {
+      const remoteRecord = remoteStreamsRef.current.get(streamID);
+      const remoteView = remoteViewsRef.current.get(streamID);
+
+      try {
+        remoteView?.destroy?.();
+      } catch {
+        // The view may already be detached.
       }
 
       try {
-        const kitToken = ZegoUIKitPrebuilt.generateKitTokenForTest(
-          appID,
-          serverSecret,
-          roomId,
-          user?._id || Date.now().toString(),
-          user?.name || "Anonymous User"
-        );
+        zg.stopPlayingStream(streamID);
+      } catch {
+        // The stream may already be stopped.
+      }
 
-        const zp = ZegoUIKitPrebuilt.create(kitToken);
-        zegoRef.current = zp;
+      stopMediaStreamTracks(remoteRecord?.stream);
+      remoteViewsRef.current.delete(streamID);
+      remoteStreamsRef.current.delete(streamID);
 
-        zp.joinRoom({
-          container: meetingContainerRef.current,
-          sharedLinks: [
-            {
-              name: "Copy Meeting Link",
-              url: window.location.origin + `/video-call/${roomId}`,
-            },
-          ],
-          scenario: {
-            mode: ZegoUIKitPrebuilt.OneONoneCall,
-          },
-          showScreenSharingButton: true,
-          showMyCameraToggleButton: true,
-          showMyMicrophoneToggleButton: true,
-          showAudioVideoSettingsButton: true,
-          showTextChat: true,
-          showUserList: false,
-          maxUsers: 2,
-          layout: "Auto",
-          onLeaveRoom: handleLeaveRoom,
+      if (remoteVideoRef.current && remoteStreamsRef.current.size === 0) {
+        remoteVideoRef.current.innerHTML = "";
+      }
+
+      const nextIds = Array.from(remoteStreamsRef.current.keys());
+      updateDiagnostics({
+        remoteStreamsCount: nextIds.length,
+        remoteStreamIDs: nextIds,
+      });
+      setSafeRemoteStreamIds();
+      if (nextIds.length === 0) {
+        setSafeCallState(CALL_STATES.waiting);
+      }
+      logZegoDebug("remote stream removed", {
+        remoteStreamID: streamID,
+        remoteStreamsCount: nextIds.length,
+      });
+    };
+
+    const playRemoteStream = async (zg, streamID, retryCount = 0) => {
+      if (!streamID || streamID === localStreamIdRef.current || cancelled) return;
+      if (remoteStreamsRef.current.has(streamID) && retryCount === 0) return;
+
+      try {
+        logZegoDebug("startPlayingStream", { remoteStreamID: streamID, retryCount });
+        const remoteStream = await zg.startPlayingStream(streamID);
+        if (cancelled) return;
+
+        remoteStreamsRef.current.set(streamID, { stream: remoteStream });
+        const container = remoteVideoRef.current;
+        if (container) container.innerHTML = "";
+
+        if (container && typeof remoteStream?.playVideo === "function") {
+          remoteStream.playVideo(container, { objectFit: "cover" });
+          styleVideoElements(container);
+        } else if (container && typeof zg.createRemoteStreamView === "function") {
+          const remoteView = zg.createRemoteStreamView(remoteStream);
+          remoteViewsRef.current.set(streamID, remoteView);
+          await remoteView.play(container, { objectFit: "cover" });
+          styleVideoElements(container);
+        } else if (container) {
+          await attachMediaStreamToContainer(container, remoteStream);
+        }
+
+        const nextIds = Array.from(remoteStreamsRef.current.keys());
+        updateDiagnostics({
+          playerError: "",
+          remoteStreamsCount: nextIds.length,
+          remoteStreamIDs: nextIds,
         });
-      } catch (meetingError) {
-        console.error("ZegoCloud Initialization Error:", meetingError);
-        toast.error("Failed to start video call. Check console for details.");
+        setSafeRemoteStreamIds();
+        setSafeCallState(CALL_STATES.connected);
+        logZegoDebug("remote stream playing", {
+          remoteStreamID: streamID,
+          remoteStreamsCount: nextIds.length,
+        });
+      } catch (playError) {
+        const playerError = summarizeZegoError(playError);
+        logZegoDebug("player error", {
+          remoteStreamID: streamID,
+          playerError,
+          retryCount,
+        });
+
+        if (retryCount < 1 && !cancelled) {
+          await wait(1000);
+          await playRemoteStream(zg, streamID, retryCount + 1);
+          return;
+        }
+
+        if (!cancelled) {
+          updateDiagnostics({ playerError: playerError.message });
+          setSafeCallState(CALL_STATES.remoteFailed);
+        }
       }
     };
 
-    initializeCall();
+    const initializeCall = async () => {
+      updateDiagnostics({
+        localStreamCreated: false,
+        localStreamPublished: false,
+        playerError: "",
+        remoteStreamsCount: 0,
+        remoteStreamIDs: [],
+      });
+      setRemoteStreamIds([]);
+
+      logZegoDebug("initializing", {
+        bookingClientId,
+        bookingExpertId,
+        userIDUnique: bookingClientId !== bookingExpertId,
+      });
+
+      setSafeCallState(CALL_STATES.checking);
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Camera and microphone permission is required.");
+      }
+
+      let permissionStream = null;
+      try {
+        permissionStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      } catch {
+        throw new Error("Camera and microphone permission is required.");
+      } finally {
+        stopMediaStreamTracks(permissionStream);
+      }
+
+      const authToken = localStorage.getItem("token");
+      const { data: zegoAccess } = await axios.get(`${API_URL}/api/bookings/room/${roomId}/zego-token`, {
+        headers: { Authorization: authToken },
+      });
+      if (cancelled) return;
+
+      if (zegoAccess.userID !== currentUserId) {
+        throw new Error("Zego user ID does not match the current user.");
+      }
+      if (zegoAccess.roomId !== roomId) {
+        throw new Error("Zego room ID does not match this booking room.");
+      }
+
+      setSafeCallState(CALL_STATES.joining);
+      logZegoDebug("zego config received", {
+        appID: zegoAccess.appID,
+        tokenGeneratedForRoomId: zegoAccess.roomId,
+        tokenGeneratedForUserID: zegoAccess.userID,
+        streamID: zegoAccess.streamID,
+      });
+
+      const { ZegoExpressEngine } = await import("zego-express-engine-webrtc");
+      if (cancelled) return;
+
+      const zg = new ZegoExpressEngine(Number(zegoAccess.appID), zegoAccess.server || undefined);
+      zegoRef.current = zg;
+      localStreamIdRef.current = zegoAccess.streamID;
+
+      const onRoomStateUpdate = (updatedRoomID, state, errorCode, extendedData) => {
+        logZegoDebug("roomStateUpdate", { updatedRoomID, state, errorCode, extendedData });
+        if (state === "DISCONNECTED" || state === "CONNECTING") {
+          setSafeCallState(CALL_STATES.reconnecting);
+        }
+        if (state === "CONNECTED" && remoteStreamsRef.current.size > 0) {
+          setSafeCallState(CALL_STATES.connected);
+        }
+      };
+
+      const onRoomStateChanged = (updatedRoomID, reason, errorCode, extendedData) => {
+        const reasonText = String(reason || "").toUpperCase();
+        logZegoDebug("roomStateChanged", { updatedRoomID, reason, errorCode, extendedData });
+        if (reasonText.includes("RECONNECT") || reasonText.includes("DISCONNECT") || reasonText.includes("BROKEN")) {
+          setSafeCallState(CALL_STATES.reconnecting);
+        }
+      };
+
+      zg.on("roomStateUpdate", onRoomStateUpdate);
+      zg.on("roomStateChanged", onRoomStateChanged);
+      zg.on("publisherStateUpdate", (result) => {
+        logZegoDebug("publisherStateUpdate", result);
+        if (result?.state === "PUBLISHING") {
+          updateDiagnostics({ localStreamPublished: true });
+        }
+      });
+      zg.on("playerStateUpdate", (result) => {
+        logZegoDebug("playerStateUpdate", result);
+        if (result?.errorCode) {
+          updateDiagnostics({ playerError: `Player error ${result.errorCode}` });
+        }
+      });
+      zg.on("roomStreamUpdate", (updatedRoomID, updateType, streamList = [], extendedData) => {
+        const streamIDs = streamList.map(getStreamID).filter(Boolean);
+        logZegoDebug("roomStreamUpdate", {
+          updatedRoomID,
+          updateType,
+          streamIDs,
+          remoteStreamsCount: remoteStreamsRef.current.size,
+          extendedData,
+        });
+
+        if (updateType === "ADD") {
+          streamIDs.forEach((streamID) => {
+            if (streamID !== localStreamIdRef.current) {
+              playRemoteStream(zg, streamID);
+            }
+          });
+        }
+
+        if (updateType === "DELETE") {
+          streamIDs.forEach((streamID) => removeRemoteStream(zg, streamID));
+        }
+      });
+
+      let joined;
+      try {
+        joined = await zg.loginRoom(
+          zegoAccess.roomId,
+          zegoAccess.token,
+          { userID: zegoAccess.userID, userName: zegoAccess.userName || user?.name || zegoAccess.userID },
+          { userUpdate: true }
+        );
+      } catch (joinError) {
+        logZegoDebug("joinRoom fail", { joinError: summarizeZegoError(joinError) });
+        throw joinError;
+      }
+
+      if (!joined) {
+        logZegoDebug("joinRoom fail", { reason: "loginRoom returned false" });
+        throw new Error("Failed to join Zego room.");
+      }
+
+      joinedRoomRef.current = true;
+      logZegoDebug("joinRoom success", {
+        roomId: zegoAccess.roomId,
+        currentUserId: zegoAccess.userID,
+        currentUserRole: zegoAccess.currentUserRole,
+      });
+
+      setSafeCallState(CALL_STATES.publishing);
+      let localStream;
+      try {
+        localStream = await createLocalStream(zg);
+        localStreamRef.current = localStream;
+        await renderLocalPreview(zg, localStream);
+        updateDiagnostics({ localStreamCreated: true });
+        logZegoDebug("createStream success", { localStreamCreated: true });
+      } catch (streamError) {
+        updateDiagnostics({ localStreamCreated: false });
+        logZegoDebug("createStream fail", { streamError: summarizeZegoError(streamError), localStreamCreated: false });
+        throw streamError;
+      }
+
+      const publishStarted = zg.startPublishingStream(zegoAccess.streamID, localStream);
+      updateDiagnostics({ localStreamPublished: Boolean(publishStarted) });
+      logZegoDebug("startPublishingStream", {
+        streamID: zegoAccess.streamID,
+        localStreamPublished: Boolean(publishStarted),
+      });
+      if (!publishStarted) {
+        throw new Error("Failed to publish local stream.");
+      }
+
+      setSafeCallState(remoteStreamsRef.current.size > 0 ? CALL_STATES.connected : CALL_STATES.waiting);
+    };
+
+    initializeCall().catch((callError) => {
+      if (cancelled) return;
+      const message = callError?.message === "Camera and microphone permission is required."
+        ? "Camera and microphone permission is required."
+        : callError.response?.data?.message || callError?.message || "Failed to start video call.";
+      logZegoDebug("initialization failed", { error: summarizeZegoError(callError) });
+      cleanupZegoCall();
+      setError(message);
+      toast.error(message);
+    });
 
     return () => {
       cancelled = true;
-      if (zegoRef.current) {
-        zegoRef.current.destroy();
-        zegoRef.current = null;
-      }
+      cleanupZegoCall();
     };
-  }, [booking, callAccess, canJoinNow, completeCall, consentAccepted, handleLeaveRoom, isAfterBookedTime, loading, roomId, user?._id, user?.name]);
+  }, [
+    booking,
+    bookingClientId,
+    bookingExpertId,
+    callAccess,
+    canJoinNow,
+    cleanupZegoCall,
+    completeCall,
+    consentAccepted,
+    currentUserId,
+    error,
+    isAfterBookedTime,
+    loading,
+    logZegoDebug,
+    participantValidation.valid,
+    roomId,
+    updateDiagnostics,
+    user?.name,
+  ]);
 
   useEffect(() => {
     if (!booking || !callAccess) return undefined;
@@ -398,12 +915,12 @@ const VideoCall = () => {
     );
   }
 
-  if (error) {
+  if (blockingError) {
     return (
       <div className="w-screen h-screen bg-slate-950 flex items-center justify-center text-white px-6">
         <div className="max-w-xl rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center">
           <p className="text-xs font-bold uppercase tracking-[0.3em] text-red-300">Meeting unavailable</p>
-          <h1 className="mt-4 text-3xl font-extrabold">{error}</h1>
+          <h1 className="mt-4 text-3xl font-extrabold">{blockingError}</h1>
           <button
             type="button"
             onClick={() => navigate("/dashboard", { replace: true })}
@@ -530,15 +1047,15 @@ const VideoCall = () => {
 
   return (
     <div className="w-screen h-screen bg-slate-950 flex flex-col items-center justify-center overflow-hidden text-white">
-      <div className="w-full bg-slate-900 border-b border-white/5 py-3 px-6 flex flex-wrap items-center justify-between gap-3 z-10">
+      <div className="relative z-40 w-full bg-slate-900 border-b border-white/5 py-3 px-4 sm:px-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-3 h-3 bg-emerald-500 rounded-full animate-ping" />
-          <span className="font-mono text-sm tracking-wider text-slate-400 truncate">
+          <div className={`h-3 w-3 rounded-full ${remoteStreamIds.length > 0 ? "bg-emerald-400" : "bg-amber-400 animate-pulse"}`} />
+          <span className="font-mono text-xs sm:text-sm tracking-wider text-slate-400 truncate">
             SECURE MEETING ROOM: {roomId}
           </span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="rounded-full border border-white/10 bg-white/5 px-4 py-1.5 font-mono text-sm text-amber-300">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 font-mono text-xs sm:text-sm text-amber-300">
             {nowTick <= bookingEnd ? `Time left ${formatDuration(callCountdown)}` : "Ending..."}
           </span>
           <button
@@ -566,26 +1083,76 @@ const VideoCall = () => {
         </div>
       </div>
 
-      <div className="w-full border-b border-white/10 bg-black/20 px-6 py-3 text-sm text-slate-300">
-        {statusCopy}
+      <div className="relative z-40 w-full border-b border-white/10 bg-black/30 px-4 py-3 text-sm text-slate-300 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-semibold text-white">{callState}</p>
+            <p className="mt-1 text-xs text-slate-500">{statusCopy}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+              Local {callDiagnostics.localStreamPublished ? "published" : callDiagnostics.localStreamCreated ? "created" : "pending"}
+            </span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+              remoteStreams {remoteStreamIds.length}
+            </span>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1">
+              {currentUserRole}
+            </span>
+          </div>
+        </div>
+        {callDiagnostics.playerError && (
+          <p className="mt-2 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200">
+            Player error: {callDiagnostics.playerError}
+          </p>
+        )}
       </div>
 
-      <div className="relative w-full flex-grow" style={{ width: "100vw", height: "calc(100vh - 102px)" }}>
-        <div
-          ref={meetingContainerRef}
-          className="privacy-sensitive-surface h-full w-full"
-        />
-        <PrivacyWatermark
-          lines={watermarkLines}
-          watermarkId={booking?._id || roomId}
-          enabled={watermarkEnabled}
-          blurred={protection.blurred}
-          variant="call"
-          density="dense"
-        />
+      <div className="relative z-0 w-full flex-grow overflow-hidden bg-black" style={{ width: "100vw", height: "calc(100vh - 148px)" }}>
+        <div className="privacy-sensitive-surface relative h-full min-h-[360px] w-full overflow-hidden bg-slate-950">
+          <div
+            ref={remoteVideoRef}
+            id={remoteVideoMountId}
+            className="absolute inset-0 z-0 h-full w-full overflow-hidden bg-slate-950 [&_video]:h-full [&_video]:w-full [&_video]:object-cover"
+          />
+
+          {remoteStreamIds.length === 0 && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-6 text-center">
+              <div className="max-w-sm rounded-2xl border border-white/10 bg-slate-950/70 px-5 py-4 shadow-2xl backdrop-blur-md">
+                <p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-300">{callState}</p>
+                <p className="mt-2 text-sm text-slate-300">
+                  Your local preview stays visible while the other participant publishes their stream.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="absolute bottom-4 right-4 z-30 h-36 w-40 overflow-hidden rounded-2xl border border-white/20 bg-black shadow-2xl shadow-black/40 sm:h-40 sm:w-60">
+            <div
+              ref={localPreviewRef}
+              id={localVideoMountId}
+              className="h-full w-full bg-slate-900 [&_video]:h-full [&_video]:w-full [&_video]:object-cover"
+            />
+            {!callDiagnostics.localStreamCreated && (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 px-3 text-center">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-300">Local preview</p>
+              </div>
+            )}
+          </div>
+
+          <PrivacyWatermark
+            lines={watermarkLines}
+            watermarkId={booking?._id || roomId}
+            enabled={watermarkEnabled}
+            blurred={protection.blurred}
+            variant="call"
+            density="dense"
+            className="z-20"
+          />
+        </div>
       </div>
       {ending && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm">
           <div className="rounded-2xl border border-white/10 bg-white/5 px-6 py-4 text-center">
             <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent" />
             <p className="text-sm font-semibold text-white">Ending call...</p>
