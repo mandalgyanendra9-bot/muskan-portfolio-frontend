@@ -1,17 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import toast from "react-hot-toast";
+import { useAuth } from "../context/AuthContext";
 import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import SEO from "../components/SEO";
 import BookingJoinAction from "../components/BookingJoinAction";
-import { useAuth } from "../context/AuthContext";
-import {
-  formatBookingRange,
-  getBookingDurationMinutes,
-  getBookingJoinState,
-} from "../utils/bookingTime";
+import { formatBookingRange, getBookingDurationMinutes, getBookingJoinState, stampBookingReceivedAt } from "../utils/bookingTime";
 
 const API_URL = import.meta.env.VITE_API_URL || "";
 
@@ -23,6 +19,16 @@ const money = new Intl.NumberFormat("en-IN", {
 
 const formatMoney = (value = 0) => money.format(Number(value) || 0);
 
+const normalizeBookingPayload = (payload) => {
+  const booking = payload?.booking || payload;
+  if (!booking) return null;
+  return stampBookingReceivedAt({
+    ...booking,
+    callAccess: payload?.callAccess || booking.callAccess,
+    serverNow: payload?.callAccess?.serverNow || booking.serverNow,
+  });
+};
+
 const BookingDetails = () => {
   const { bookingId } = useParams();
   const location = useLocation();
@@ -30,8 +36,7 @@ const BookingDetails = () => {
   const { user } = useAuth();
   const isSuccessPage = location.pathname.startsWith("/booking-success");
 
-  const [booking, setBooking] = useState(location.state?.booking || null);
-  const [callAccess, setCallAccess] = useState(location.state?.callAccess || location.state?.booking?.callAccess || null);
+  const [booking, setBooking] = useState(() => normalizeBookingPayload(location.state?.booking));
   const [loading, setLoading] = useState(!location.state?.booking);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
@@ -40,36 +45,47 @@ const BookingDetails = () => {
     return () => window.clearInterval(timer);
   }, []);
 
-  useEffect(() => {
-    const fetchBooking = async () => {
-      try {
-        const token = localStorage.getItem("token");
-        const { data } = await axios.get(`${API_URL}/api/bookings/${bookingId}`, {
-          headers: { Authorization: token },
-        });
-        setBooking(data.booking);
-        setCallAccess(data.callAccess || data.booking?.callAccess || null);
-      } catch (error) {
-        toast.error(error.response?.data?.message || "Unable to load booking");
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchBooking = useCallback(async ({ showLoading = false, quiet = false } = {}) => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token || !bookingId) return;
+      if (showLoading) setLoading(true);
 
-    if (bookingId) fetchBooking();
+      const { data } = await axios.get(`${API_URL}/api/bookings/${bookingId}`, {
+        headers: { Authorization: token },
+      });
+      setBooking(normalizeBookingPayload(data));
+    } catch (error) {
+      if (!quiet) toast.error(error.response?.data?.message || "Unable to load booking");
+    } finally {
+      setLoading(false);
+    }
   }, [bookingId]);
 
-  const bookingWithAccess = useMemo(() => (
-    booking ? { ...booking, callAccess: callAccess || booking.callAccess } : null
-  ), [booking, callAccess]);
-  const joinState = useMemo(
-    () => getBookingJoinState(bookingWithAccess || {}, user, nowTick),
-    [bookingWithAccess, nowTick, user]
-  );
+  useEffect(() => {
+    if (!bookingId) return undefined;
+    const timer = window.setTimeout(() => {
+      void fetchBooking();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [bookingId, fetchBooking]);
+
+  const joinState = useMemo(() => getBookingJoinState(booking || {}, nowTick), [booking, nowTick]);
+  const shouldPollBooking = Boolean(joinState.show && joinState.secondsUntilEnd !== null && joinState.secondsUntilEnd > 0);
+
+  useEffect(() => {
+    if (!shouldPollBooking) return undefined;
+
+    const timer = window.setInterval(() => {
+      void fetchBooking({ quiet: true });
+    }, 20000);
+
+    return () => window.clearInterval(timer);
+  }, [fetchBooking, shouldPollBooking]);
 
   const handleJoin = () => {
-    if (!bookingWithAccess?._id) return;
-    navigate(`/video-call/${bookingWithAccess._id}`, { state: { booking: bookingWithAccess } });
+    if (!booking?._id) return;
+    navigate(`/video-call/${booking._id}`, { state: { booking } });
   };
 
   if (loading) {
@@ -83,7 +99,7 @@ const BookingDetails = () => {
     );
   }
 
-  if (!bookingWithAccess) {
+  if (!booking) {
     return (
       <div className="min-h-screen bg-surface text-white">
         <Navbar />
@@ -109,41 +125,37 @@ const BookingDetails = () => {
           <h1 className="mt-4 text-4xl font-extrabold">
             {isSuccessPage ? "Your consultation is confirmed" : "Consultation booking"}
           </h1>
-          <p className="mt-3 text-slate-400">{formatBookingRange(bookingWithAccess)}</p>
+          <p className="mt-3 text-slate-400">{formatBookingRange(booking)}</p>
 
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <p className="text-xs uppercase tracking-wider text-slate-500">Status</p>
-              <p className="mt-2 font-bold capitalize text-white">{bookingWithAccess.status || bookingWithAccess.bookingStatus}</p>
-              <p className="text-xs capitalize text-slate-500">{bookingWithAccess.paymentStatus}</p>
+              <p className="mt-2 font-bold capitalize text-white">{booking.status}</p>
+              <p className="text-xs capitalize text-slate-500">{booking.paymentStatus}</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <p className="text-xs uppercase tracking-wider text-slate-500">Duration</p>
-              <p className="mt-2 font-bold text-white">{getBookingDurationMinutes(bookingWithAccess)} minutes</p>
+              <p className="mt-2 font-bold text-white">{getBookingDurationMinutes(booking)} minutes</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <p className="text-xs uppercase tracking-wider text-slate-500">Amount</p>
-              <p className="mt-2 font-bold text-white">{formatMoney(bookingWithAccess.totalAmount || bookingWithAccess.totalPrice)}</p>
+              <p className="mt-2 font-bold text-white">{formatMoney(booking.totalAmount || booking.totalPrice)}</p>
             </div>
           </div>
 
           <div className="mt-8 rounded-2xl border border-white/10 bg-black/20 p-5">
             <p className="text-xs uppercase tracking-wider text-slate-500">Join window</p>
             <p className="mt-2 text-sm text-slate-300">
-              {joinState.canJoin
-                ? "The room is open now."
-                : joinState.countdownLabel || joinState.joinReasonBlocked}
+              {joinState.state === "early"
+                ? joinState.label
+                : joinState.state === "ended"
+                  ? "This session has ended."
+                  : joinState.canJoin
+                    ? "The room is open now."
+                    : "Join becomes available after successful payment confirmation."}
             </p>
-            <div className="mt-4 grid gap-3 text-xs text-slate-500 md:grid-cols-2">
-              <p>serverNow: {joinState.serverNow || "not provided"}</p>
-              <p>startAt: {joinState.startAt || "not set"}</p>
-              <p>endAt: {joinState.endAt || "not set"}</p>
-              <p>joinStart: {joinState.joinStart || "not set"}</p>
-              <p>joinEnd: {joinState.joinEnd || "not set"}</p>
-              <p>canJoin: {String(joinState.canJoin)}</p>
-            </div>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-              <BookingJoinAction booking={bookingWithAccess} user={user} now={nowTick} onJoin={handleJoin} />
+              <BookingJoinAction booking={booking} user={user} now={nowTick} onJoin={handleJoin} />
               <button
                 type="button"
                 onClick={() => navigate("/dashboard")}

@@ -1,18 +1,7 @@
 export const DEFAULT_BOOKING_TIMEZONE = "Asia/Kolkata";
-export const JOIN_WINDOW_EARLY_MINUTES = 30;
+export const JOIN_WINDOW_EARLY_MINUTES = 5;
 
 const isValidDate = (date) => date instanceof Date && !Number.isNaN(date.getTime());
-
-const parseDate = (value) => {
-  if (!value) return null;
-  const parsed = new Date(value);
-  return isValidDate(parsed) ? parsed : null;
-};
-
-const getIdString = (value) => {
-  if (!value) return "";
-  return String(value?._id || value?.id || value);
-};
 
 const safeTimezone = (timezone) => {
   const cleanTimezone = timezone || DEFAULT_BOOKING_TIMEZONE;
@@ -24,9 +13,30 @@ const safeTimezone = (timezone) => {
   }
 };
 
-const normalizeStatus = (value) => String(value || "").trim().toLowerCase();
+const parseDate = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return isValidDate(parsed) ? parsed : null;
+};
 
-const formatDuration = (totalSeconds = 0) => {
+const normalizeStatus = (status) => String(status || "").trim().toLowerCase();
+
+const normalizeClock = (value = "") => {
+  const text = String(value || "").trim();
+  const match = text.match(/^(\d{1,2}):([0-5]\d)(?:\s*(AM|PM))?$/i);
+  if (!match) return text;
+  let hour = Number(match[1]);
+  const minute = match[2];
+  const period = match[3]?.toUpperCase();
+  if (period === "AM" && hour === 12) hour = 0;
+  if (period === "PM" && hour !== 12) hour += 12;
+  if (hour < 0 || hour > 23) return text;
+  const displayPeriod = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour % 12 || 12;
+  return `${displayHour}:${minute} ${displayPeriod}`;
+};
+
+export const formatDuration = (totalSeconds = 0) => {
   const safeSeconds = Math.max(0, Math.floor(totalSeconds));
   const hours = Math.floor(safeSeconds / 3600);
   const minutes = Math.floor((safeSeconds % 3600) / 60);
@@ -36,7 +46,33 @@ const formatDuration = (totalSeconds = 0) => {
   return `${seconds}s`;
 };
 
-export const getBookingDurationMinutes = (booking = {}) => Number(booking.durationMinutes || booking.duration || 0);
+export const formatTimer = (totalSeconds = 0) => {
+  const safeSeconds = Math.max(0, Math.ceil(totalSeconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const seconds = safeSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+};
+
+export const stampBookingReceivedAt = (booking, receivedAt = Date.now()) => (
+  booking ? { ...booking, __receivedAt: receivedAt } : booking
+);
+
+export const stampBookingsReceivedAt = (bookings = [], receivedAt = Date.now()) => (
+  Array.isArray(bookings) ? bookings.map((booking) => stampBookingReceivedAt(booking, receivedAt)) : []
+);
+
+const getJoinDiagnostics = (booking = {}) => booking.joinDiagnostics || booking.callAccess || {};
+
+const getServerSyncedNow = (booking = {}, now = Date.now()) => {
+  const localNow = Number.isFinite(Number(now)) ? Number(now) : Date.now();
+  const diagnostics = getJoinDiagnostics(booking);
+  const serverNow = parseDate(diagnostics.serverNow || booking.serverNow);
+  const receivedAt = Number(booking.__receivedAt || diagnostics.receivedAt || 0);
+  if (!serverNow || !Number.isFinite(receivedAt) || receivedAt <= 0) return localNow;
+  return serverNow.getTime() + Math.max(0, localNow - receivedAt);
+};
+
+export const getBookingTimezone = (booking = {}) => safeTimezone(booking.timezone || booking.expert?.timezone || booking.client?.timezone);
 
 export const getBookingStartDate = (booking = {}) => (
   parseDate(booking.startAt) ||
@@ -52,6 +88,8 @@ export const getBookingEndDate = (booking = {}) => {
   const durationMinutes = getBookingDurationMinutes(booking);
   return start && durationMinutes > 0 ? new Date(start.getTime() + durationMinutes * 60 * 1000) : null;
 };
+
+export const getBookingDurationMinutes = (booking = {}) => Number(booking.durationMinutes || booking.duration || 0);
 
 export const formatBookingTime = (startAt, timezone = DEFAULT_BOOKING_TIMEZONE) => {
   const start = parseDate(startAt);
@@ -75,56 +113,160 @@ export const formatBookingClock = (value, timezone = DEFAULT_BOOKING_TIMEZONE) =
 };
 
 export const formatBookingRange = (booking = {}) => {
-  const timezone = safeTimezone(booking.timezone || booking.expert?.timezone || booking.client?.timezone);
+  const timezone = getBookingTimezone(booking);
   const start = getBookingStartDate(booking);
   const end = getBookingEndDate(booking);
-  if (start && end) return `${formatBookingTime(start, timezone)} - ${formatBookingClock(end, timezone)}`;
+
+  if (start && end) {
+    return `${formatBookingTime(start, timezone)} - ${formatBookingClock(end, timezone)}`;
+  }
+
+  if (booking.date && booking.startTime) {
+    const endText = booking.endTime ? ` - ${normalizeClock(booking.endTime)}` : "";
+    return `${booking.date} ${normalizeClock(booking.startTime)}${endText}`;
+  }
+
   return "Schedule not set";
 };
 
-export const getBookingJoinState = (booking = {}, currentUser = null, now = Date.now()) => {
-  const bookingId = getIdString(booking?._id);
-  const currentUserId = getIdString(currentUser?._id || currentUser?.id || (typeof currentUser === "string" ? currentUser : ""));
-  const clientId = getIdString(booking?.clientId || booking?.client);
-  const expertId = getIdString(booking?.expertId || booking?.expert);
-  const isClient = Boolean(currentUserId && clientId && currentUserId === clientId);
-  const isExpert = Boolean(currentUserId && expertId && currentUserId === expertId);
-  const bookingStatus = normalizeStatus(booking.status || booking.bookingStatus);
-  const paymentStatus = normalizeStatus(booking.paymentStatus);
-  const isConfirmed = bookingStatus === "confirmed" || normalizeStatus(booking.bookingStatus) === "confirmed";
-  const isCompleted = bookingStatus === "completed" || normalizeStatus(booking.bookingStatus) === "completed";
-  const start = getBookingStartDate(booking);
-  const end = getBookingEndDate(booking);
-  const joinStart = start ? start.getTime() - JOIN_WINDOW_EARLY_MINUTES * 60 * 1000 : 0;
-  const joinEnd = end ? end.getTime() : 0;
-  const callAccess = booking.callAccess || {};
+export const getBookingJoinState = (booking = {}, now = Date.now()) => {
+  const diagnostics = getJoinDiagnostics(booking);
+  const effectiveNow = getServerSyncedNow(booking, now);
+  const status = normalizeStatus(diagnostics.status || booking.status);
+  const bookingStatus = normalizeStatus(diagnostics.bookingStatus || booking.bookingStatus || booking.status);
+  const paymentStatus = normalizeStatus(diagnostics.paymentStatus || booking.paymentStatus);
+  const isPaid = paymentStatus === "paid";
+  const isConfirmed = status === "confirmed" || bookingStatus === "confirmed";
+  const isCompleted = status === "completed" || bookingStatus === "completed";
+  const shouldShow = isPaid && (isConfirmed || isCompleted);
 
-  let joinReasonBlocked = "";
-  if (!isClient && !isExpert) joinReasonBlocked = "not_booking_participant";
-  else if (isCompleted || (joinEnd > 0 && now >= joinEnd)) joinReasonBlocked = "session_ended";
-  else if (paymentStatus !== "paid" || !isConfirmed) joinReasonBlocked = "waiting_payment";
-  else if (!start || !end || now < joinStart) joinReasonBlocked = "before_join_window";
+  if (!shouldShow) {
+    return {
+      show: false,
+      canJoin: false,
+      state: "hidden",
+      label: "Join Room",
+      bookingId: booking._id || diagnostics.bookingId || "",
+      status,
+      bookingStatus,
+      paymentStatus,
+      joinReason: diagnostics.joinReason || "not_paid_confirmed",
+      secondsUntilJoin: diagnostics.secondsUntilJoin ?? null,
+      secondsUntilEnd: diagnostics.secondsUntilEnd ?? null,
+      serverNow: diagnostics.serverNow || booking.serverNow || null,
+    };
+  }
 
-  const canJoin = !joinReasonBlocked;
+  const start = parseDate(diagnostics.startsAt || diagnostics.startAt) || getBookingStartDate(booking);
+  const end = parseDate(diagnostics.endsAt || diagnostics.endAt) || getBookingEndDate(booking);
+  if (!start || !end) {
+    return {
+      show: true,
+      canJoin: false,
+      state: "invalid",
+      label: "Join time unavailable",
+      bookingId: booking._id || diagnostics.bookingId || "",
+      status,
+      bookingStatus,
+      paymentStatus,
+      joinReason: diagnostics.joinReason || "time_unavailable",
+      secondsUntilJoin: null,
+      secondsUntilEnd: null,
+      serverNow: diagnostics.serverNow || booking.serverNow || null,
+    };
+  }
+
+  const diagnosticJoinOpensAt = parseDate(diagnostics.joinOpensAt);
+  const joinOpensAt = diagnosticJoinOpensAt
+    ? diagnosticJoinOpensAt.getTime()
+    : start.getTime() - JOIN_WINDOW_EARLY_MINUTES * 60 * 1000;
+  const endAt = end.getTime();
+  const secondsUntilJoin = Math.max(0, Math.ceil((joinOpensAt - effectiveNow) / 1000));
+  const secondsUntilEnd = Math.max(0, Math.ceil((endAt - effectiveNow) / 1000));
+
+  if (isCompleted || effectiveNow >= endAt) {
+    return {
+      show: true,
+      canJoin: false,
+      state: "ended",
+      label: "Session ended",
+      bookingId: booking._id || diagnostics.bookingId || "",
+      status,
+      bookingStatus,
+      paymentStatus,
+      joinReason: "session_ended",
+      secondsUntilJoin,
+      secondsUntilEnd,
+      joinOpensAt,
+      startAt: start.toISOString(),
+      endAt: end.toISOString(),
+      serverNow: diagnostics.serverNow || booking.serverNow || null,
+    };
+  }
+
+  if (effectiveNow < joinOpensAt) {
+    return {
+      show: true,
+      canJoin: false,
+      state: "early",
+      label: `Join opens in ${formatTimer(secondsUntilJoin)}`,
+      bookingId: booking._id || diagnostics.bookingId || "",
+      status,
+      bookingStatus,
+      paymentStatus,
+      joinReason: "before_join_window",
+      secondsUntilJoin,
+      secondsUntilEnd,
+      joinOpensAt,
+      startAt: start.toISOString(),
+      endAt: end.toISOString(),
+      serverNow: diagnostics.serverNow || booking.serverNow || null,
+    };
+  }
+
+  if (diagnostics.canJoin === false && diagnostics.joinReason && !["before_join_window", "join_open"].includes(diagnostics.joinReason)) {
+    const blockedReason = diagnostics.joinReason === "session_ended" ? "session_ended" : diagnostics.joinReason;
+    return {
+      show: true,
+      canJoin: false,
+      state: blockedReason === "session_ended" ? "ended" : "blocked",
+      label: blockedReason === "session_ended" ? "Session ended" : "Join unavailable",
+      bookingId: booking._id || diagnostics.bookingId || "",
+      status,
+      bookingStatus,
+      paymentStatus,
+      joinReason: blockedReason,
+      secondsUntilJoin,
+      secondsUntilEnd,
+      joinOpensAt,
+      startAt: start.toISOString(),
+      endAt: end.toISOString(),
+      serverNow: diagnostics.serverNow || booking.serverNow || null,
+    };
+  }
 
   return {
-    bookingId,
+    show: true,
+    canJoin: true,
+    state: "active",
+    label: "Join Room",
+    bookingId: booking._id || diagnostics.bookingId || "",
+    status,
     bookingStatus,
     paymentStatus,
-    isClient,
-    isExpert,
-    isConfirmed,
-    canJoin,
-    joinReasonBlocked,
-    label: canJoin ? "Join Room" : joinReasonBlocked,
-    countdownLabel: joinReasonBlocked === "before_join_window" && joinStart > now
-      ? `Join opens in ${formatDuration(Math.ceil((joinStart - now) / 1000))}`
-      : "",
-    show: Boolean(isClient || isExpert),
-    serverNow: callAccess.serverNow || null,
-    startAt: start ? start.toISOString() : callAccess.startAt || callAccess.startsAt || null,
-    endAt: end ? end.toISOString() : callAccess.endAt || callAccess.endsAt || null,
-    joinStart: joinStart ? new Date(joinStart).toISOString() : callAccess.joinStart || callAccess.joinOpensAt || null,
-    joinEnd: joinEnd ? new Date(joinEnd).toISOString() : callAccess.joinEnd || callAccess.graceEndsAt || null,
+    joinReason: "join_open",
+    secondsUntilJoin,
+    secondsUntilEnd,
+    joinOpensAt,
+    startAt: start.toISOString(),
+    endAt: end.toISOString(),
+    serverNow: diagnostics.serverNow || booking.serverNow || null,
   };
+};
+
+export const maskTransactionId = (transactionId = "") => {
+  const text = String(transactionId || "").trim();
+  if (!text) return "Not provided";
+  if (text.length <= 8) return `${text.slice(0, 2)}****${text.slice(-2)}`;
+  return `${text.slice(0, 4)}****${text.slice(-4)}`;
 };
