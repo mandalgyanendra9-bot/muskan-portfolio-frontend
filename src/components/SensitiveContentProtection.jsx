@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
@@ -6,7 +7,7 @@ import { clearPrivacyScope, setPrivacyScope } from "../utils/privacyMode";
 import { useSignedMediaUrl, extractPrivateMediaPathFromValue } from "../utils/privateMedia";
 
 const API_ROOT = import.meta.env.VITE_API_URL || "http://localhost:5000";
-const WARNING_TEXT = "Screenshots/recording are prohibited and may lead to account ban.";
+const WARNING_TEXT = "Session privacy protection is active for this consultation.";
 const PRIVACY_SETTINGS_ENDPOINT = `${API_ROOT}/api/privacy/settings`;
 const PRIVACY_SETTINGS_CACHE_KEY = "privacy-watermark-enabled-cache";
 const PRIVACY_SETTINGS_TTL = 5 * 60 * 1000;
@@ -264,12 +265,12 @@ export const useSensitiveContentProtection = ({
 
     const onContextMenu = (event) => {
       event.preventDefault();
-      showWarning("right_click", "Right-click is disabled on protected content.");
+      showWarning("right_click", "Right-click is disabled for protected consultation materials.");
     };
 
     const onDragStart = (event) => {
       event.preventDefault();
-      showWarning("drag_attempt", "Dragging or saving protected media is disabled.");
+      showWarning("drag_attempt", "Dragging or saving protected consultation materials is disabled.");
     };
 
     const onKeyDown = (event) => {
@@ -283,7 +284,7 @@ export const useSensitiveContentProtection = ({
 
       event.preventDefault();
       event.stopPropagation();
-      showWarning("screenshot_hotkey", "Screenshots/recording are prohibited and may lead to account ban.");
+      showWarning("screenshot_hotkey", "Session privacy protection is active for this consultation.");
     };
 
     const onVisibilityChange = () => {
@@ -335,7 +336,7 @@ export const PrivacyWarningModal = ({ open, message = WARNING_TEXT, onClose }) =
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M10.29 3.86l-8.14 14.5A2 2 0 003.9 21h16.2a2 2 0 001.75-2.64l-8.14-14.5a2 2 0 00-3.52 0z" />
           </svg>
         </div>
-        <h2 className="text-2xl font-extrabold text-white">Capture blocked</h2>
+        <h2 className="text-2xl font-extrabold text-white">Session privacy protection</h2>
         <p className="mt-3 text-sm leading-6 text-slate-300">{message}</p>
         <button
           type="button"
@@ -349,13 +350,12 @@ export const PrivacyWarningModal = ({ open, message = WARNING_TEXT, onClose }) =
   );
 };
 
-export const ConsentModal = ({
-  open,
+const ConsentModalContent = ({
   bookingLabel = "this session",
   onAccept,
   onDecline,
-  title = "Before joining, confirm the privacy terms",
-  description = "These protections help reduce copying, recording, and accidental leakage.",
+  title = "Before joining, confirm the consultation privacy terms",
+  description = "These protections help support secure professional communication and reduce unauthorized sharing.",
 }) => {
   const [checked, setChecked] = useState({
     recording: false,
@@ -363,15 +363,7 @@ export const ConsentModal = ({
     sharing: false,
   });
 
-  useEffect(() => {
-    if (open) {
-      setChecked({ recording: false, screenshot: false, sharing: false });
-    }
-  }, [open]);
-
   const canProceed = checked.recording && checked.screenshot && checked.sharing;
-
-  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[240] flex items-center justify-center bg-slate-950/90 px-4 backdrop-blur-xl">
@@ -383,9 +375,9 @@ export const ConsentModal = ({
 
         <div className="mt-6 space-y-3">
           {[
-            ["recording", "I will not record this call or content."],
-            ["screenshot", "I will not capture screenshots or screen grabs."],
-            ["sharing", "I will not share the session content with others."],
+            ["recording", "I will not record this consultation."],
+            ["screenshot", "I will respect session privacy protection requirements."],
+            ["sharing", "I will not share consultation materials with others."],
           ].map(([key, label]) => (
             <label key={key} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
               <input
@@ -419,6 +411,11 @@ export const ConsentModal = ({
       </div>
     </div>
   );
+};
+
+export const ConsentModal = ({ open, ...props }) => {
+  if (!open) return null;
+  return <ConsentModalContent {...props} />;
 };
 
 export const PrivacyWatermark = ({
@@ -512,19 +509,16 @@ export const SecureMediaImage = ({
   decoding = "async",
   fetchPriority,
 }) => {
-  const [broken, setBroken] = useState(false);
+  const [brokenImage, setBrokenImage] = useState({ source: "", broken: false });
   const { signedUrl } = useSignedMediaUrl(source, { enabled: signed });
-  const displayName = alt || user?.name || "Protected media";
+  const displayName = alt || user?.name || "Protected consultation material";
   const initials = getInitials(displayName);
-
-  useEffect(() => {
-    setBroken(false);
-  }, [signedUrl, source]);
 
   const sourceText = String(source || "").trim();
   const isPrivateSource = Boolean(extractPrivateMediaPathFromValue(sourceText));
   const safeDirectSource = !isPrivateSource && /^(https?:|data:|blob:)/i.test(sourceText) ? sourceText : "";
   const resolvedSource = signedUrl || safeDirectSource;
+  const broken = brokenImage.broken && brokenImage.source === resolvedSource;
 
   const handleContextMenu = (event) => event.preventDefault();
   const handleDragStart = (event) => event.preventDefault();
@@ -551,7 +545,7 @@ export const SecureMediaImage = ({
           loading={loading}
           decoding={decoding}
           fetchPriority={fetchPriority}
-          onError={() => setBroken(true)}
+          onError={() => setBrokenImage({ source: resolvedSource, broken: true })}
         />
       )}
       {watermarkLines.length > 0 ? (

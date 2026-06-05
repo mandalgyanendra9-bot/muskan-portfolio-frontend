@@ -14,12 +14,16 @@ const API_URL = import.meta.env.VITE_API_URL || "";
 const CALL_JOIN_EARLY_MINUTES = 30;
 const CONSENT_STORAGE_PREFIX = "video-call-consent";
 const ZEGO_SLOW_LOGIN_MS = 10000;
-const ZEGO_LOGIN_TIMEOUT_MS = 90000;
-const DEFAULT_ZEGO_WEB_SERVERS = [
+const ZEGO_LOGIN_TIMEOUT_MS = 30000;
+const SDK_DEFAULT_EMPTY_SERVER = "SDK_DEFAULT_EMPTY_SERVER";
+const ZEGO_RETRY_MESSAGE = "Video server connection timed out. Retrying alternate server...";
+const ZEGO_LEGACY_RTC_SERVER = "wss://rtc-api.zego.im/ws";
+const getDefaultZegoWebServers = (appId = 0) => [
+  Number.isSafeInteger(appId) && appId > 0 ? `wss://webliveroom${appId}-api.zegocloud.com/ws` : "",
   "wss://webliveroom-api.zegocloud.com/ws",
   "wss://webliveroom-api.zego.im/ws",
-];
-const FRONTEND_ZEGO_WEB_SERVER = import.meta.env.VITE_ZEGO_SERVER || import.meta.env.VITE_ZEGO_SERVER_URL || "";
+].filter(Boolean);
+const FRONTEND_ZEGO_WEB_SERVER = import.meta.env.VITE_ZEGO_WEB_SERVER_URL || import.meta.env.VITE_ZEGO_SERVER || import.meta.env.VITE_ZEGO_SERVER_URL || "";
 
 const CALL_STATES = {
   checking: "Checking camera/microphone...",
@@ -28,6 +32,7 @@ const CALL_STATES = {
   waiting: "Waiting for the other participant...",
   connected: "Connected",
   reconnecting: "Reconnecting...",
+  retrying: ZEGO_RETRY_MESSAGE,
   remoteFailed: "Remote video failed to play",
 };
 
@@ -63,6 +68,17 @@ const getZegoSdkErrorDetails = (error, fallbackMessage = "") => {
   const code = error?.code ?? error?.errorCode ?? error?.errCode ?? error?.error_code ?? "";
   const message = error?.message || error?.msg || error?.reason || fallbackMessage || String(error);
   return { code: code === null || code === undefined ? "" : String(code), message: message || "" };
+};
+
+const isZegoLoginSuccess = (result) => {
+  if (result === true) return true;
+  if (!result) return false;
+  if (typeof result === "object") {
+    const code = result?.errorCode ?? result?.code ?? result?.errCode;
+    if (code === undefined || code === null || code === "") return true;
+    return Number(code) === 0 || String(code) === "0";
+  }
+  return Boolean(result);
 };
 
 const safeStringifyZegoError = (value) => {
@@ -103,35 +119,67 @@ const getZegoAccessIds = (zegoAccess = {}) => ({
   roomId: String(zegoAccess.roomId || ""),
   userId: String(zegoAccess.userId ?? zegoAccess.userID ?? ""),
   token: String(zegoAccess.token || ""),
+  streamId: String(zegoAccess.streamId ?? zegoAccess.streamID ?? ""),
 });
 
-const normalizeZegoServer = (server) => {
+const normalizeZegoServers = (server) => {
   const normalizeOne = (value) => {
     const text = String(value || "").trim();
-    if (!text) return "";
-    return /^(wss?|https?):\/\//i.test(text) ? text : "";
+    if (!text) return [];
+    const legacyServer = ZEGO_LEGACY_RTC_SERVER.replace(/\/+$/, "").toLowerCase();
+    if (text.replace(/\/+$/, "").toLowerCase() === legacyServer) return [];
+    return text
+      .split(",")
+      .map((item) => item.trim())
+      .filter((item) => /^(wss?|https?):\/\//i.test(item))
+      .filter((item) => item.replace(/\/+$/, "").toLowerCase() !== legacyServer);
   };
 
   if (Array.isArray(server)) {
-    const servers = server.map(normalizeOne).filter(Boolean);
-    return servers.length > 0 ? servers : "";
+    return server.flatMap(normalizeOne);
   }
 
   return normalizeOne(server);
 };
 
-const getZegoEngineServer = (zegoAccess = {}) => {
-  const backendServer = normalizeZegoServer(zegoAccess.server);
-  if (Array.isArray(backendServer) ? backendServer.length > 0 : Boolean(backendServer)) {
-    return { server: backendServer, source: "backend" };
+const getZegoServerKey = (server) => {
+  if (Array.isArray(server)) {
+    return server.map(getZegoServerKey).filter(Boolean).join("|");
   }
+  return String(server || "").replace(/\/+$/, "").toLowerCase();
+};
 
-  const frontendServer = normalizeZegoServer(FRONTEND_ZEGO_WEB_SERVER);
-  if (frontendServer) {
-    return { server: frontendServer, source: "frontend_env" };
+const uniqueZegoServers = (servers = []) => servers.filter((server, index, list) => {
+  const normalized = getZegoServerKey(server);
+  return normalized && list.findIndex((item) => getZegoServerKey(item) === normalized) === index;
+});
+
+const getZegoServerLabel = (server) => {
+  if (Array.isArray(server)) {
+    return server.length > 0 ? `SERVER_ARRAY_${server.length}` : SDK_DEFAULT_EMPTY_SERVER;
   }
+  return server || SDK_DEFAULT_EMPTY_SERVER;
+};
 
-  return { server: DEFAULT_ZEGO_WEB_SERVERS, source: "default" };
+const getZegoEngineServerCandidates = (zegoAccess = {}, appId = 0) => {
+  const backendServers = normalizeZegoServers(zegoAccess.server);
+  const frontendServers = normalizeZegoServers(FRONTEND_ZEGO_WEB_SERVER);
+  const defaultServers = getDefaultZegoWebServers(appId);
+  const explicitServers = uniqueZegoServers([...backendServers, ...frontendServers, ...defaultServers]);
+  const candidates = explicitServers.length > 0 ? [explicitServers, ""] : [""];
+  const sources = [
+    backendServers.length > 0 ? "backend" : "",
+    frontendServers.length > 0 ? "frontend_env" : "",
+    "documented_global_fallbacks",
+    "sdk_default_empty",
+  ].filter(Boolean);
+
+  return {
+    servers: candidates,
+    source: sources.join("+"),
+    explicitServerCount: explicitServers.length,
+    explicitServers,
+  };
 };
 
 const withLoginTimeout = (promise, { timeoutMs, slowMs, onSlow, createTimeoutError }) => {
@@ -268,6 +316,9 @@ const VideoCall = () => {
     engineServerConfigured: false,
     engineServerSource: "",
     engineServerCount: 0,
+    activeEngineServer: "",
+    retryCount: 0,
+    lastServerTried: "",
     localStreamCreated: false,
     localStreamPublished: false,
     localPublishError: "",
@@ -827,6 +878,9 @@ const VideoCall = () => {
         engineServerConfigured: false,
         engineServerSource: "",
         engineServerCount: 0,
+        activeEngineServer: "",
+        retryCount: 0,
+        lastServerTried: "",
         localStreamCreated: false,
         localStreamPublished: false,
         localPublishError: "",
@@ -873,11 +927,12 @@ const VideoCall = () => {
         roomId: zegoRoomId,
         userId: zegoUserId,
         token: zegoToken,
+        streamId: zegoStreamId,
       } = getZegoAccessIds(zegoAccess);
-      const zegoStreamId = String(zegoAccess.streamID || zegoAccess.streamId || "");
-      const { server: engineServer, source: engineServerSource } = getZegoEngineServer(zegoAccess);
-      const engineServerConfigured = Array.isArray(engineServer) ? engineServer.length > 0 : Boolean(engineServer);
-      const engineServerCount = Array.isArray(engineServer) ? engineServer.length : engineServerConfigured ? 1 : 0;
+      const serverCandidates = getZegoEngineServerCandidates(zegoAccess, zegoAppId);
+      const engineServerConfigured = serverCandidates.explicitServerCount > 0;
+      const engineServerSource = serverCandidates.source;
+      const engineServerCount = serverCandidates.explicitServerCount || serverCandidates.servers.length;
       const tokenReceived = Boolean(zegoToken);
       const appIdExists = Number.isSafeInteger(zegoAppId) && zegoAppId > 0;
       const roomIdExists = Boolean(zegoRoomId);
@@ -893,6 +948,10 @@ const VideoCall = () => {
         engineServerConfigured,
         engineServerSource,
         engineServerCount,
+        activeEngineServer: "",
+        retryCount: 0,
+        lastServerTried: "",
+        zegoServers: serverCandidates.explicitServers,
         loginError: "",
         lastLoginError: "",
       });
@@ -908,10 +967,11 @@ const VideoCall = () => {
         engineServerConfigured,
         engineServerSource,
         engineServerCount,
+        zegoServers: serverCandidates.explicitServers,
         streamID: zegoStreamId,
       });
 
-      if (zegoAccess.success === false || !tokenReceived || !appIdExists || !roomIdExists || !zegoUserId || !zegoStreamId || !engineServerConfigured) {
+      if (zegoAccess.success === false || !tokenReceived || !appIdExists || !roomIdExists || !zegoUserId || !zegoStreamId) {
         throw new Error("Unable to join video server.");
       }
       if (zegoUserId !== currentUserId) {
@@ -932,6 +992,7 @@ const VideoCall = () => {
         engineServerConfigured,
         engineServerSource,
         engineServerCount,
+        zegoServers: serverCandidates.explicitServers,
         tokenGeneratedForRoomId: zegoRoomId,
         tokenGeneratedForUserID: zegoUserId,
         streamID: zegoStreamId,
@@ -940,176 +1001,165 @@ const VideoCall = () => {
       const { ZegoExpressEngine } = await import("zego-express-engine-webrtc");
       if (cancelled) return;
 
-      let zg;
-      try {
-        zg = new ZegoExpressEngine(zegoAppId, engineServer);
-      } catch (engineError) {
-        const sdkError = getZegoSdkErrorDetails(engineError, "Zego engine initialization failed");
-        logZegoDebug("engine init fail", {
-          engineError: sdkError,
-          engineServerConfigured,
-          engineServerSource,
-          engineServerCount,
+      const bindZegoEventHandlers = (zg, activeEngineServer) => {
+        const onRoomStateUpdate = (updatedRoomID, state, errorCode, extendedData) => {
+          const stateText = String(state || "unknown").toUpperCase();
+          const roomStateErrorCode = errorCode ? String(errorCode) : "";
+          const roomStateErrorMessage = errorCode ? String(extendedData || `SDK room error ${errorCode}`) : "";
+          logZegoDebug("roomStateUpdate", {
+            updatedRoomID,
+            state: stateText,
+            errorCode: roomStateErrorCode || "0",
+            extendedData,
+            activeEngineServer,
+          });
+          updateDiagnostics((current) => ({
+            roomState: stateText,
+            joinedRoom: joinedRoomRef.current,
+            activeEngineServer,
+            roomStateErrorCode: roomStateErrorCode || current.roomStateErrorCode,
+            roomStateErrorMessage: roomStateErrorMessage || current.roomStateErrorMessage,
+            sdkErrorCode: roomStateErrorCode || current.sdkErrorCode,
+            sdkErrorMessage: roomStateErrorMessage || current.sdkErrorMessage,
+            lastLoginError: !joinedRoomRef.current && roomStateErrorMessage ? roomStateErrorMessage : current.lastLoginError,
+          }));
+          if (stateText === "DISCONNECTED" || stateText === "CONNECTING") {
+            setSafeCallState(CALL_STATES.reconnecting);
+          }
+          if (stateText === "CONNECTED" && remoteStreamsRef.current.size > 0) {
+            setSafeCallState(CALL_STATES.connected);
+          }
+        };
+
+        const onRoomStateChanged = (updatedRoomID, state, errorCode, extendedData) => {
+          const stateText = String(state || "unknown").toUpperCase();
+          const roomStateErrorCode = errorCode ? String(errorCode) : "";
+          const roomStateErrorMessage = errorCode ? String(extendedData || `SDK room error ${errorCode}`) : "";
+          logZegoDebug("roomStateChanged", {
+            updatedRoomID,
+            state: stateText,
+            errorCode: roomStateErrorCode || "0",
+            extendedData,
+            activeEngineServer,
+          });
+          updateDiagnostics((current) => ({
+            roomState: stateText || "unknown",
+            joinedRoom: joinedRoomRef.current,
+            activeEngineServer,
+            roomStateErrorCode: roomStateErrorCode || current.roomStateErrorCode,
+            roomStateErrorMessage: roomStateErrorMessage || current.roomStateErrorMessage,
+            sdkErrorCode: roomStateErrorCode || current.sdkErrorCode,
+            sdkErrorMessage: roomStateErrorMessage || current.sdkErrorMessage,
+            lastLoginError: !joinedRoomRef.current && roomStateErrorMessage ? roomStateErrorMessage : current.lastLoginError,
+          }));
+          if (stateText.includes("RECONNECT") || stateText.includes("DISCONNECT") || stateText.includes("BROKEN")) {
+            setSafeCallState(CALL_STATES.reconnecting);
+          }
+        };
+
+        const onSdkError = (...args) => {
+          const [errorCodeOrError, messageOrError, extendedData] = args;
+          const sdkError = getZegoSdkErrorDetails(
+            errorCodeOrError && typeof errorCodeOrError === "object"
+              ? errorCodeOrError
+              : { errorCode: errorCodeOrError, message: messageOrError || extendedData },
+            "Zego SDK error"
+          );
+          const rawError = safeStringifyZegoError(args);
+          logZegoDebug("sdk on error callback", {
+            sdkError,
+            rawError,
+            activeEngineServer,
+          });
+          updateDiagnostics({
+            activeEngineServer,
+            sdkErrorCode: sdkError.code,
+            sdkErrorMessage: sdkError.message,
+            sdkErrorRaw: rawError,
+            lastLoginError: !joinedRoomRef.current ? sdkError.message : "",
+          });
+        };
+
+        zg.on("roomStateUpdate", onRoomStateUpdate);
+        zg.on("roomStateChanged", onRoomStateChanged);
+        try {
+          zg.on("error", onSdkError);
+        } catch (sdkErrorCallbackError) {
+          logZegoDebug("sdk on error callback unavailable", {
+            rawError: safeStringifyZegoError(sdkErrorCallbackError),
+            activeEngineServer,
+          });
+        }
+        zg.on("publisherStateUpdate", (result) => {
+          logZegoDebug("publisherStateUpdate", { ...result, activeEngineServer });
+          const publisherState = String(result?.state || "").toUpperCase();
+          if (result?.errorCode) {
+            const sdkError = getZegoSdkErrorDetails(result, `Publisher error ${result.errorCode}`);
+            updateDiagnostics({
+              localStreamPublished: false,
+              localPublishError: "Unable to publish local stream.",
+              sdkErrorCode: sdkError.code,
+              sdkErrorMessage: sdkError.message,
+            });
+            setSafeCallState("Unable to publish local stream.");
+            return;
+          }
+          if (["PUBLISHING", "PUBLISHED", "PUBLISH_SUCC", "PUBLISH_SUCCESS"].includes(publisherState)) {
+            updateDiagnostics({ localStreamPublished: true, localPublishError: "" });
+          }
         });
+        zg.on("playerStateUpdate", (result) => {
+          logZegoDebug("playerStateUpdate", { ...result, activeEngineServer });
+          if (result?.errorCode) {
+            const sdkError = getZegoSdkErrorDetails(result, `Player error ${result.errorCode}`);
+            updateDiagnostics({
+              playerError: `Player error ${result.errorCode}`,
+              sdkErrorCode: sdkError.code,
+              sdkErrorMessage: sdkError.message,
+            });
+          }
+        });
+        zg.on("roomStreamUpdate", (updatedRoomID, updateType, streamList = [], extendedData) => {
+          const streamIDs = streamList.map(getStreamID).filter(Boolean);
+          logZegoDebug("roomStreamUpdate", {
+            updatedRoomID,
+            updateType,
+            streamIDs,
+            remoteStreamsCount: remoteStreamsRef.current.size,
+            extendedData,
+            activeEngineServer,
+          });
+
+          if (updateType === "ADD") {
+            streamIDs.forEach((streamID) => {
+              if (streamID !== localStreamIdRef.current) {
+                playRemoteStream(zg, streamID);
+              }
+            });
+          }
+
+          if (updateType === "DELETE") {
+            streamIDs.forEach((streamID) => removeRemoteStream(zg, streamID));
+          }
+        });
+      };
+
+      let zg = null;
+      let joined = false;
+      for (let attemptIndex = 0; attemptIndex < serverCandidates.servers.length; attemptIndex += 1) {
+        const engineServer = serverCandidates.servers[attemptIndex];
+        const activeEngineServer = getZegoServerLabel(engineServer);
+        const retryCount = attemptIndex;
+        let loginStartedAt = 0;
+        let lastLoginElapsedMs = 0;
+
+        setSafeCallState(CALL_STATES.joining);
         updateDiagnostics({
+          activeEngineServer,
+          retryCount,
+          lastServerTried: activeEngineServer,
           engineExists: false,
-          sdkErrorCode: sdkError.code,
-          sdkErrorMessage: sdkError.message,
-        });
-        throw new Error("Unable to join video server.", { cause: engineError });
-      }
-
-      updateDiagnostics({ engineExists: Boolean(zg) });
-      logZegoDebug("engine initialized", {
-        engineExists: Boolean(zg),
-        engineServerConfigured,
-        engineServerSource,
-        engineServerCount,
-        sdkVersion: ZegoExpressEngine.version || zg?.getVersion?.(),
-      });
-      zegoRef.current = zg;
-      localStreamIdRef.current = zegoStreamId;
-
-      const onRoomStateUpdate = (updatedRoomID, state, errorCode, extendedData) => {
-        const stateText = String(state || "unknown").toUpperCase();
-        const roomStateErrorCode = errorCode ? String(errorCode) : "";
-        const roomStateErrorMessage = errorCode ? String(extendedData || `SDK room error ${errorCode}`) : "";
-        logZegoDebug("roomStateUpdate", {
-          updatedRoomID,
-          state: stateText,
-          errorCode: roomStateErrorCode || "0",
-          extendedData,
-        });
-        updateDiagnostics((current) => ({
-          roomState: stateText,
-          joinedRoom: joinedRoomRef.current,
-          roomStateErrorCode: roomStateErrorCode || current.roomStateErrorCode,
-          roomStateErrorMessage: roomStateErrorMessage || current.roomStateErrorMessage,
-          sdkErrorCode: roomStateErrorCode || current.sdkErrorCode,
-          sdkErrorMessage: roomStateErrorMessage || current.sdkErrorMessage,
-          lastLoginError: !joinedRoomRef.current && roomStateErrorMessage ? roomStateErrorMessage : current.lastLoginError,
-        }));
-        if (stateText === "DISCONNECTED" || stateText === "CONNECTING") {
-          setSafeCallState(CALL_STATES.reconnecting);
-        }
-        if (stateText === "CONNECTED" && remoteStreamsRef.current.size > 0) {
-          setSafeCallState(CALL_STATES.connected);
-        }
-      };
-
-      const onRoomStateChanged = (updatedRoomID, state, errorCode, extendedData) => {
-        const stateText = String(state || "unknown").toUpperCase();
-        const roomStateErrorCode = errorCode ? String(errorCode) : "";
-        const roomStateErrorMessage = errorCode ? String(extendedData || `SDK room error ${errorCode}`) : "";
-        logZegoDebug("roomStateChanged", {
-          updatedRoomID,
-          state: stateText,
-          errorCode: roomStateErrorCode || "0",
-          extendedData,
-        });
-        updateDiagnostics((current) => ({
-          roomState: stateText || "unknown",
-          joinedRoom: joinedRoomRef.current,
-          roomStateErrorCode: roomStateErrorCode || current.roomStateErrorCode,
-          roomStateErrorMessage: roomStateErrorMessage || current.roomStateErrorMessage,
-          sdkErrorCode: roomStateErrorCode || current.sdkErrorCode,
-          sdkErrorMessage: roomStateErrorMessage || current.sdkErrorMessage,
-          lastLoginError: !joinedRoomRef.current && roomStateErrorMessage ? roomStateErrorMessage : current.lastLoginError,
-        }));
-        if (stateText.includes("RECONNECT") || stateText.includes("DISCONNECT") || stateText.includes("BROKEN")) {
-          setSafeCallState(CALL_STATES.reconnecting);
-        }
-      };
-
-      const onSdkError = (...args) => {
-        const [errorCodeOrError, messageOrError, extendedData] = args;
-        const sdkError = getZegoSdkErrorDetails(
-          errorCodeOrError && typeof errorCodeOrError === "object"
-            ? errorCodeOrError
-            : { errorCode: errorCodeOrError, message: messageOrError || extendedData },
-          "Zego SDK error"
-        );
-        const rawError = safeStringifyZegoError(args);
-        logZegoDebug("sdk on error callback", {
-          sdkError,
-          rawError,
-        });
-        updateDiagnostics({
-          sdkErrorCode: sdkError.code,
-          sdkErrorMessage: sdkError.message,
-          sdkErrorRaw: rawError,
-          lastLoginError: !joinedRoomRef.current ? sdkError.message : "",
-        });
-      };
-
-      zg.on("roomStateUpdate", onRoomStateUpdate);
-      zg.on("roomStateChanged", onRoomStateChanged);
-      try {
-        zg.on("error", onSdkError);
-      } catch (sdkErrorCallbackError) {
-        logZegoDebug("sdk on error callback unavailable", {
-          rawError: safeStringifyZegoError(sdkErrorCallbackError),
-        });
-      }
-      zg.on("publisherStateUpdate", (result) => {
-        logZegoDebug("publisherStateUpdate", result);
-        const publisherState = String(result?.state || "").toUpperCase();
-        if (result?.errorCode) {
-          const sdkError = getZegoSdkErrorDetails(result, `Publisher error ${result.errorCode}`);
-          updateDiagnostics({
-            localStreamPublished: false,
-            localPublishError: "Unable to publish local stream.",
-            sdkErrorCode: sdkError.code,
-            sdkErrorMessage: sdkError.message,
-          });
-          setSafeCallState("Unable to publish local stream.");
-          return;
-        }
-        if (["PUBLISHING", "PUBLISHED", "PUBLISH_SUCC", "PUBLISH_SUCCESS"].includes(publisherState)) {
-          updateDiagnostics({ localStreamPublished: true, localPublishError: "" });
-        }
-      });
-      zg.on("playerStateUpdate", (result) => {
-        logZegoDebug("playerStateUpdate", result);
-        if (result?.errorCode) {
-          const sdkError = getZegoSdkErrorDetails(result, `Player error ${result.errorCode}`);
-          updateDiagnostics({
-            playerError: `Player error ${result.errorCode}`,
-            sdkErrorCode: sdkError.code,
-            sdkErrorMessage: sdkError.message,
-          });
-        }
-      });
-      zg.on("roomStreamUpdate", (updatedRoomID, updateType, streamList = [], extendedData) => {
-        const streamIDs = streamList.map(getStreamID).filter(Boolean);
-        logZegoDebug("roomStreamUpdate", {
-          updatedRoomID,
-          updateType,
-          streamIDs,
-          remoteStreamsCount: remoteStreamsRef.current.size,
-          extendedData,
-        });
-
-        if (updateType === "ADD") {
-          streamIDs.forEach((streamID) => {
-            if (streamID !== localStreamIdRef.current) {
-              playRemoteStream(zg, streamID);
-            }
-          });
-        }
-
-        if (updateType === "DELETE") {
-          streamIDs.forEach((streamID) => removeRemoteStream(zg, streamID));
-        }
-      });
-
-      let joined;
-      let loginStartedAt = 0;
-      let lastLoginElapsedMs = 0;
-      try {
-        loginStartedAt = Date.now();
-        updateDiagnostics({
-          loginStarted: true,
+          loginStarted: false,
           loginSuccess: false,
           loginResolved: false,
           loginResolvedValue: "",
@@ -1125,168 +1175,298 @@ const VideoCall = () => {
           roomState: "LOGINING",
           roomStateErrorCode: "",
           roomStateErrorMessage: "",
+          sdkErrorCode: "",
+          sdkErrorMessage: "",
         });
-        logZegoDebug("loginRoom start", {
-          appId: zegoAppId,
-          roomId: zegoRoomId,
-          userId: zegoUserId,
-          tokenReceived,
-          tokenLength,
-          tokenPrefix,
+
+        try {
+          zg = new ZegoExpressEngine(zegoAppId, engineServer);
+        } catch (engineError) {
+          const sdkError = getZegoSdkErrorDetails(engineError, "Zego engine initialization failed");
+          logZegoDebug("engine init fail", {
+            engineError: sdkError,
+            activeEngineServer,
+            retryCount,
+            engineServerConfigured,
+            engineServerSource,
+            engineServerCount,
+          });
+          updateDiagnostics({
+            engineExists: false,
+            activeEngineServer,
+            retryCount,
+            lastServerTried: activeEngineServer,
+            sdkErrorCode: sdkError.code,
+            sdkErrorMessage: sdkError.message,
+            lastLoginError: sdkError.message,
+          });
+          cleanupZegoCall();
+          if (attemptIndex < serverCandidates.servers.length - 1) {
+            await wait(300);
+            continue;
+          }
+          throw new Error("Unable to join video server.", { cause: engineError });
+        }
+
+        zegoRef.current = zg;
+        localStreamIdRef.current = zegoStreamId;
+        bindZegoEventHandlers(zg, activeEngineServer);
+
+        updateDiagnostics({
+          engineExists: true,
+          activeEngineServer,
+          retryCount,
+          lastServerTried: activeEngineServer,
+        });
+        logZegoDebug("engine initialized", {
           engineExists: Boolean(zg),
+          activeEngineServer,
+          retryCount,
           engineServerConfigured,
           engineServerSource,
           engineServerCount,
+          engineServerList: Array.isArray(engineServer) ? engineServer : [],
+          sdkVersion: ZegoExpressEngine.version || zg?.getVersion?.(),
         });
-        const loginPromise = zg.loginRoom(
-          zegoRoomId,
-          zegoToken,
-          { userID: zegoUserId, userName: zegoAccess.userName || user?.name || zegoUserId },
-          { userUpdate: true }
-        )
-          .then((result) => {
-            lastLoginElapsedMs = Date.now() - loginStartedAt;
-            const loginResolvedValue = typeof result === "boolean" ? String(result) : safeStringifyZegoError(result);
-            updateDiagnostics({
-              loginResolved: true,
-              loginResolvedValue,
-              loginRejected: false,
-              loginRejectReason: "",
-              loginElapsedMs: lastLoginElapsedMs,
-            });
-            logZegoDebug("loginRoom resolved", {
-              result,
-              loginResolvedValue,
-              loginElapsedMs: lastLoginElapsedMs,
-            });
-            return result;
-          })
-          .catch((loginReject) => {
-            lastLoginElapsedMs = Date.now() - loginStartedAt;
-            const loginError = getZegoSdkErrorDetails(loginReject, "loginRoom rejected");
-            const rawLoginError = safeStringifyZegoError(loginReject);
-            const loginRejectReason = loginError.message || rawLoginError || "loginRoom rejected";
-            if (loginReject && typeof loginReject === "object") {
-              loginReject.loginElapsedMs = lastLoginElapsedMs;
-              loginReject.loginRejectReason = loginRejectReason;
-              loginReject.rawLoginError = rawLoginError;
-            }
-            updateDiagnostics({
-              loginRejected: true,
-              loginRejectReason,
-              lastLoginRejectReason: loginRejectReason,
-              rawLoginError,
-              loginElapsedMs: lastLoginElapsedMs,
-              sdkErrorCode: loginError.code,
-              sdkErrorMessage: loginError.message,
-            });
-            logZegoDebug("loginRoom rejected", {
-              loginError,
-              loginRejectReason,
-              lastLoginRejectReason: loginRejectReason,
-              rawLoginError,
-              loginElapsedMs: lastLoginElapsedMs,
-            });
-            throw loginReject;
+
+        try {
+          loginStartedAt = Date.now();
+          updateDiagnostics({
+            loginStarted: true,
+            loginSuccess: false,
+            loginResolved: false,
+            loginResolvedValue: "",
+            loginRejected: false,
+            loginRejectReason: "",
+            loginError: "",
+            lastLoginError: "",
+            lastLoginRejectReason: "",
+            rawLoginError: "",
+            loginTimeout: false,
+            loginSlow: false,
+            loginElapsedMs: 0,
+            roomState: "LOGINING",
+            roomStateErrorCode: "",
+            roomStateErrorMessage: "",
+            activeEngineServer,
+            retryCount,
+            lastServerTried: activeEngineServer,
           });
-        joined = await withLoginTimeout(
-          loginPromise,
-          {
-            timeoutMs: ZEGO_LOGIN_TIMEOUT_MS,
-            slowMs: ZEGO_SLOW_LOGIN_MS,
-            onSlow: () => {
-              const elapsedMs = Date.now() - loginStartedAt;
-              updateDiagnostics({ loginSlow: true, loginElapsedMs: elapsedMs });
-              setSafeCallState(CALL_STATES.reconnecting);
-              logZegoDebug("loginRoom slow", {
-                elapsedMs,
-                roomState: "LOGINING",
-                engineServerConfigured,
-                engineServerSource,
-                engineServerCount,
+          logZegoDebug("loginRoom start", {
+            appId: zegoAppId,
+            roomId: zegoRoomId,
+            userId: zegoUserId,
+            tokenReceived,
+            tokenLength,
+            tokenPrefix,
+            engineExists: Boolean(zg),
+            engineServerConfigured,
+            engineServerSource,
+            engineServerCount,
+            activeEngineServer,
+            retryCount,
+          });
+          const loginPromise = zg.loginRoom(
+            zegoRoomId,
+            zegoToken,
+            { userID: zegoUserId, userName: zegoAccess.userName || user?.name || zegoUserId },
+            { userUpdate: true }
+          )
+            .then((result) => {
+              lastLoginElapsedMs = Date.now() - loginStartedAt;
+              const loginResolvedValue = typeof result === "boolean" ? String(result) : safeStringifyZegoError(result);
+              updateDiagnostics({
+                loginResolved: true,
+                loginResolvedValue,
+                loginRejected: false,
+                loginRejectReason: "",
+                loginElapsedMs: lastLoginElapsedMs,
+                activeEngineServer,
+                retryCount,
+                lastServerTried: activeEngineServer,
               });
-            },
-            createTimeoutError: () => {
-              const timeoutError = new Error(`loginRoom timed out after ${ZEGO_LOGIN_TIMEOUT_MS}ms`);
-              timeoutError.code = "LOGIN_TIMEOUT";
-              timeoutError.loginTimeout = true;
-              timeoutError.loginElapsedMs = Date.now() - loginStartedAt;
-              return timeoutError;
-            },
+              logZegoDebug("loginRoom resolved", {
+                result,
+                loginResolvedValue,
+                loginElapsedMs: lastLoginElapsedMs,
+                activeEngineServer,
+                retryCount,
+              });
+              return result;
+            })
+            .catch((loginReject) => {
+              lastLoginElapsedMs = Date.now() - loginStartedAt;
+              const loginError = getZegoSdkErrorDetails(loginReject, "loginRoom rejected");
+              const rawLoginError = safeStringifyZegoError(loginReject);
+              const loginRejectReason = loginError.message || rawLoginError || "loginRoom rejected";
+              if (loginReject && typeof loginReject === "object") {
+                loginReject.loginElapsedMs = lastLoginElapsedMs;
+                loginReject.loginRejectReason = loginRejectReason;
+                loginReject.rawLoginError = rawLoginError;
+              }
+              updateDiagnostics({
+                loginRejected: true,
+                loginRejectReason,
+                lastLoginRejectReason: loginRejectReason,
+                rawLoginError,
+                loginElapsedMs: lastLoginElapsedMs,
+                sdkErrorCode: loginError.code,
+                sdkErrorMessage: loginError.message,
+                activeEngineServer,
+                retryCount,
+                lastServerTried: activeEngineServer,
+              });
+              logZegoDebug("loginRoom rejected", {
+                loginError,
+                loginRejectReason,
+                lastLoginRejectReason: loginRejectReason,
+                rawLoginError,
+                loginElapsedMs: lastLoginElapsedMs,
+                activeEngineServer,
+                retryCount,
+              });
+              throw loginReject;
+            });
+          const loginResult = await withLoginTimeout(
+            loginPromise,
+            {
+              timeoutMs: ZEGO_LOGIN_TIMEOUT_MS,
+              slowMs: ZEGO_SLOW_LOGIN_MS,
+              onSlow: () => {
+                const elapsedMs = Date.now() - loginStartedAt;
+                updateDiagnostics({
+                  loginSlow: true,
+                  loginElapsedMs: elapsedMs,
+                  activeEngineServer,
+                  retryCount,
+                  lastServerTried: activeEngineServer,
+                });
+                setSafeCallState(CALL_STATES.reconnecting);
+                logZegoDebug("loginRoom slow", {
+                  elapsedMs,
+                  roomState: "LOGINING",
+                  engineServerConfigured,
+                  engineServerSource,
+                  engineServerCount,
+                  activeEngineServer,
+                  retryCount,
+                });
+              },
+              createTimeoutError: () => {
+                const timeoutError = new Error(`loginRoom timed out after ${ZEGO_LOGIN_TIMEOUT_MS}ms`);
+                timeoutError.code = "LOGIN_TIMEOUT";
+                timeoutError.errorCode = "LOGIN_TIMEOUT";
+                timeoutError.loginTimeout = true;
+                timeoutError.loginElapsedMs = Date.now() - loginStartedAt;
+                timeoutError.serverTried = activeEngineServer;
+                return timeoutError;
+              },
+            }
+          );
+          joined = isZegoLoginSuccess(loginResult);
+
+          if (!joined) {
+            const falseReason = "loginRoom resolved false";
+            const elapsedMs = lastLoginElapsedMs || (loginStartedAt ? Date.now() - loginStartedAt : 0);
+            updateDiagnostics({
+              loginSuccess: false,
+              loginResolved: true,
+              loginResolvedValue: safeStringifyZegoError(loginResult) || String(loginResult),
+              loginRejectReason: falseReason,
+              loginError: falseReason,
+              lastLoginError: falseReason,
+              lastLoginRejectReason: falseReason,
+              loginElapsedMs: elapsedMs,
+              activeEngineServer,
+              retryCount,
+              lastServerTried: activeEngineServer,
+            });
+            logZegoDebug("loginRoom fail", {
+              reason: falseReason,
+              lastLoginRejectReason: falseReason,
+              loginElapsedMs: elapsedMs,
+              activeEngineServer,
+              retryCount,
+            });
+            cleanupZegoCall();
+            throw new Error(falseReason);
           }
-        );
-      } catch (joinError) {
-        const loginError = getZegoSdkErrorDetails(joinError, "loginRoom rejected");
-        const rawLoginError = joinError?.rawLoginError || safeStringifyZegoError(joinError);
-        const loginRejectReason = joinError?.loginRejectReason || loginError.message || rawLoginError || "loginRoom rejected";
-        const elapsedMs = joinError?.loginElapsedMs || lastLoginElapsedMs || (loginStartedAt ? Date.now() - loginStartedAt : 0);
-        const visibleMessage = loginRejectReason || "loginRoom rejected without SDK reason";
-        updateDiagnostics({
-          loginSuccess: false,
-          loginRejected: !joinError?.loginTimeout,
-          loginRejectReason: visibleMessage,
-          loginError: visibleMessage,
-          lastLoginError: visibleMessage,
-          lastLoginRejectReason: visibleMessage,
-          rawLoginError,
-          loginTimeout: Boolean(joinError?.loginTimeout),
-          loginSlow: Boolean(joinError?.loginTimeout),
-          loginElapsedMs: elapsedMs,
-          sdkErrorCode: loginError.code,
-          sdkErrorMessage: loginError.message,
-        });
-        logZegoDebug("loginRoom fail", {
-          loginError,
-          loginRejectReason: visibleMessage,
-          lastLoginRejectReason: visibleMessage,
-          rawLoginError,
-          loginTimeout: Boolean(joinError?.loginTimeout),
-          loginElapsedMs: elapsedMs,
-        });
-        throw new Error(visibleMessage, { cause: joinError });
+
+          joinedRoomRef.current = true;
+          updateDiagnostics({
+            joinedRoom: true,
+            loginSuccess: true,
+            loginError: "",
+            lastLoginError: "",
+            loginRejectReason: "",
+            lastLoginRejectReason: "",
+            rawLoginError: "",
+            loginTimeout: false,
+            loginSlow: false,
+            loginElapsedMs: lastLoginElapsedMs || (loginStartedAt ? Date.now() - loginStartedAt : 0),
+            roomState: "CONNECTED",
+            activeEngineServer,
+            retryCount,
+            lastServerTried: activeEngineServer,
+          });
+          logZegoDebug("loginRoom success", {
+            roomId: zegoRoomId,
+            currentUserId: zegoUserId,
+            currentUserRole: zegoAccess.currentUserRole,
+            loginElapsedMs: lastLoginElapsedMs || (loginStartedAt ? Date.now() - loginStartedAt : 0),
+            activeEngineServer,
+            retryCount,
+          });
+          break;
+        } catch (joinError) {
+          const loginError = getZegoSdkErrorDetails(joinError, "loginRoom rejected");
+          const rawLoginError = joinError?.rawLoginError || safeStringifyZegoError(joinError);
+          const loginRejectReason = joinError?.loginRejectReason || loginError.message || rawLoginError || "loginRoom rejected";
+          const elapsedMs = joinError?.loginElapsedMs || lastLoginElapsedMs || (loginStartedAt ? Date.now() - loginStartedAt : 0);
+          const loginTimedOut = Boolean(joinError?.loginTimeout) || loginError.code === "LOGIN_TIMEOUT" || /timed out/i.test(loginError.message);
+          const visibleMessage = loginTimedOut ? "Unable to join video server." : loginRejectReason || "loginRoom rejected without SDK reason";
+          updateDiagnostics({
+            loginSuccess: false,
+            loginRejected: !joinError?.loginTimeout,
+            loginRejectReason: visibleMessage,
+            loginError: visibleMessage,
+            lastLoginError: loginRejectReason,
+            lastLoginRejectReason: loginRejectReason,
+            rawLoginError,
+            loginTimeout: loginTimedOut,
+            loginSlow: Boolean(joinError?.loginTimeout),
+            loginElapsedMs: elapsedMs,
+            sdkErrorCode: loginTimedOut ? "LOGIN_TIMEOUT" : loginError.code,
+            sdkErrorMessage: loginError.message,
+            activeEngineServer,
+            retryCount,
+            lastServerTried: activeEngineServer,
+            roomState: "LOGOUT",
+          });
+          logZegoDebug("loginRoom fail", {
+            loginError,
+            loginRejectReason: visibleMessage,
+            lastLoginRejectReason: loginRejectReason,
+            rawLoginError,
+            loginTimeout: loginTimedOut,
+            loginElapsedMs: elapsedMs,
+            activeEngineServer,
+            retryCount,
+          });
+          cleanupZegoCall();
+          if (loginTimedOut && attemptIndex < serverCandidates.servers.length - 1) {
+            setSafeCallState(CALL_STATES.retrying);
+            toast(ZEGO_RETRY_MESSAGE, { icon: "info" });
+            await wait(500);
+            continue;
+          }
+          throw new Error(visibleMessage, { cause: joinError });
+        }
       }
 
-      if (!joined) {
-        const falseReason = "loginRoom resolved false";
-        const elapsedMs = lastLoginElapsedMs || (loginStartedAt ? Date.now() - loginStartedAt : 0);
-        updateDiagnostics({
-          loginSuccess: false,
-          loginResolved: true,
-          loginResolvedValue: String(joined),
-          loginRejectReason: falseReason,
-          loginError: falseReason,
-          lastLoginError: falseReason,
-          lastLoginRejectReason: falseReason,
-          loginElapsedMs: elapsedMs,
-        });
-        logZegoDebug("loginRoom fail", {
-          reason: falseReason,
-          lastLoginRejectReason: falseReason,
-          loginElapsedMs: elapsedMs,
-        });
-        throw new Error(falseReason);
+      if (!joined || !zg) {
+        throw new Error("Unable to join video server.");
       }
-
-      joinedRoomRef.current = true;
-      updateDiagnostics({
-        joinedRoom: true,
-        loginSuccess: true,
-        loginError: "",
-        lastLoginError: "",
-        loginRejectReason: "",
-        lastLoginRejectReason: "",
-        rawLoginError: "",
-        loginTimeout: false,
-        loginSlow: false,
-        loginElapsedMs: lastLoginElapsedMs || (loginStartedAt ? Date.now() - loginStartedAt : 0),
-        roomState: "CONNECTED",
-      });
-      logZegoDebug("loginRoom success", {
-        roomId: zegoRoomId,
-        currentUserId: zegoUserId,
-        currentUserRole: zegoAccess.currentUserRole,
-        loginElapsedMs: lastLoginElapsedMs || (loginStartedAt ? Date.now() - loginStartedAt : 0),
-      });
 
       setSafeCallState(CALL_STATES.publishing);
       let localStream;
@@ -1303,16 +1483,17 @@ const VideoCall = () => {
       }
 
       const publishStarted = zg.startPublishingStream(zegoStreamId, localStream);
+      const publishRequestStarted = publishStarted !== false;
       updateDiagnostics({
         localStreamPublished: false,
-        localPublishError: publishStarted ? "" : "Unable to publish local stream.",
+        localPublishError: publishRequestStarted ? "" : "Unable to publish local stream.",
       });
       logZegoDebug("startPublishingStream", {
         streamID: zegoStreamId,
         localStreamPublished: false,
-        publishRequestStarted: Boolean(publishStarted),
+        publishRequestStarted,
       });
-      if (!publishStarted) {
+      if (!publishRequestStarted) {
         updateDiagnostics({ localStreamPublished: false, localPublishError: "Unable to publish local stream." });
         throw new Error("Unable to publish local stream.");
       }
@@ -1407,6 +1588,9 @@ const VideoCall = () => {
     ["engineServerConfigured", callDiagnostics.engineServerConfigured],
     ["engineServerSource", callDiagnostics.engineServerSource || "none"],
     ["engineServerCount", callDiagnostics.engineServerCount || 0],
+    ["activeEngineServer", callDiagnostics.activeEngineServer || "none"],
+    ["retryCount", callDiagnostics.retryCount || 0],
+    ["lastServerTried", callDiagnostics.lastServerTried || "none"],
     ["localStreamCreated", callDiagnostics.localStreamCreated],
     ["localPublished", callDiagnostics.localStreamPublished],
     ["roomState", callDiagnostics.roomState],

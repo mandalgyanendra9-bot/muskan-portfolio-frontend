@@ -12,7 +12,7 @@ const extractPrivateMediaPath = (value = "") => {
 
   if (/^https?:\/\//i.test(text)) {
     try {
-      const url = new URL(text);
+      new URL(text);
       const backendOrigin = getBackendOrigin();
       if (backendOrigin && text.startsWith(backendOrigin) && text.includes("/uploads/")) {
         return text.slice(text.indexOf("/uploads/"));
@@ -41,79 +41,68 @@ const mediaCache = new Map();
 export const useSignedMediaUrl = (value, options = {}) => {
   const expiresIn = options.expiresIn || 10 * 60;
   const enabled = options.enabled !== false;
-  const [signedUrl, setSignedUrl] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [mediaState, setMediaState] = useState({ key: "", loading: false, signedUrl: "" });
 
   const sourceKey = useMemo(() => String(value || ""), [value]);
   const directSource = useMemo(() => getDirectSource(sourceKey), [sourceKey]);
   const privatePath = useMemo(() => extractPrivateMediaPath(sourceKey), [sourceKey]);
+  const cacheKey = privatePath ? `${privatePath}:${expiresIn}` : "";
+  const activeMediaState = mediaState.key === cacheKey ? mediaState : { loading: false, signedUrl: "" };
+  const signedUrl = activeMediaState.signedUrl;
 
   useEffect(() => {
     let mounted = true;
 
-    if (!enabled) {
-      setSignedUrl(directSource || "");
+    if (!enabled || directSource || !privatePath) {
       return () => {
         mounted = false;
       };
     }
 
-    if (directSource) {
-      setSignedUrl(directSource);
-      return () => {
-        mounted = false;
-      };
-    }
-
-    if (!privatePath) {
-      setSignedUrl("");
-      return () => {
-        mounted = false;
-      };
-    }
-
-    const cacheKey = `${privatePath}:${expiresIn}`;
     const cached = mediaCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now() + 1000) {
-      setSignedUrl(cached.url);
+      Promise.resolve().then(() => {
+        if (mounted) {
+          setMediaState({ key: cacheKey, loading: false, signedUrl: cached.url });
+        }
+      });
       return () => {
         mounted = false;
       };
     }
 
-    setLoading(true);
-    axios
-      .get(`${getBackendOrigin()}/api/media/sign`, {
-        params: {
-          path: privatePath,
-          expiresIn,
-        },
+    Promise.resolve()
+      .then(() => {
+        if (!mounted) return null;
+        setMediaState({ key: cacheKey, loading: true, signedUrl: "" });
+        return axios.get(`${getBackendOrigin()}/api/media/sign`, {
+          params: {
+            path: privatePath,
+            expiresIn,
+          },
+        });
       })
       .then((response) => {
-        if (!mounted) return;
+        if (!mounted || !response) return;
         const url = `${getBackendOrigin()}${response.data.url || ""}`;
         mediaCache.set(cacheKey, {
           url,
           expiresAt: Date.parse(response.data.expiresAt) || Date.now() + expiresIn * 1000,
         });
-        setSignedUrl(url);
+        setMediaState({ key: cacheKey, loading: false, signedUrl: url });
       })
       .catch(() => {
         if (!mounted) return;
-        setSignedUrl("");
-      })
-      .finally(() => {
-        if (!mounted) return;
-        setLoading(false);
+        setMediaState({ key: cacheKey, loading: false, signedUrl: "" });
       });
 
     return () => {
       mounted = false;
     };
-  }, [directSource, enabled, expiresIn, privatePath]);
+  }, [cacheKey, directSource, enabled, expiresIn, privatePath]);
 
   return {
-    loading,
+    loading: activeMediaState.loading,
     privatePath,
     signedUrl: signedUrl || directSource || "",
   };
