@@ -221,6 +221,12 @@ const uniqueZegoServers = (servers = []) => servers.filter((server, index, list)
   return normalized && list.findIndex((item) => getZegoServerKey(item) === normalized) === index;
 });
 
+const getZegoServerDebugList = (server) => {
+  if (Array.isArray(server)) return server.map((item) => String(item || ""));
+  const text = String(server || "").trim();
+  return text ? [text] : [];
+};
+
 const getZegoServerLabel = (server) => {
   if (Array.isArray(server)) {
     return server.length > 0 ? `SERVER_ARRAY_${server.length}` : SDK_DEFAULT_EMPTY_SERVER;
@@ -229,16 +235,18 @@ const getZegoServerLabel = (server) => {
 };
 
 const getZegoEngineServerCandidates = (zegoAccess = {}, appId = 0) => {
-  const backendServers = normalizeZegoServers(zegoAccess.server);
+  const backendServers = uniqueZegoServers([
+    ...normalizeZegoServers(zegoAccess.serverCandidates),
+    ...normalizeZegoServers(zegoAccess.server),
+  ]);
   const frontendServers = normalizeZegoServers(FRONTEND_ZEGO_WEB_SERVER);
   const defaultServers = getDefaultZegoWebServers(appId);
   const explicitServers = uniqueZegoServers([...backendServers, ...frontendServers, ...defaultServers]);
-  const candidates = explicitServers.length > 0 ? [explicitServers, ""] : [""];
+  const candidates = explicitServers.length > 0 ? [explicitServers] : [];
   const sources = [
     backendServers.length > 0 ? "backend" : "",
     frontendServers.length > 0 ? "frontend_env" : "",
     "documented_global_fallbacks",
-    "sdk_default_empty",
   ].filter(Boolean);
 
   return {
@@ -1154,15 +1162,22 @@ const VideoCall = () => {
         tokenReceived,
         tokenLength,
         tokenPrefix,
+        backendServerReceived: zegoAccess.server ?? null,
+        backendServerCandidatesReceived: getZegoServerDebugList(zegoAccess.serverCandidates),
+        backendServerArrayReceived: getZegoServerDebugList(zegoAccess.server),
         engineServerConfigured,
         engineServerSource,
         engineServerCount,
+        engineServerCandidates: serverCandidates.servers,
         zegoServers: serverCandidates.explicitServers,
         streamID: zegoStreamId,
       });
 
       if (zegoAccess.success === false || !tokenReceived || !appIdExists || !roomIdExists || !zegoUserId || !zegoStreamId) {
         throw new Error("Unable to join video server.");
+      }
+      if (serverCandidates.explicitServerCount <= 0 || serverCandidates.servers.length <= 0) {
+        throw new Error("Video server candidates are missing.");
       }
       if (zegoUserId !== currentUserId) {
         throw new Error("Zego user ID does not match the current user.");
@@ -1179,9 +1194,13 @@ const VideoCall = () => {
         tokenReceived,
         tokenLength,
         tokenPrefix,
+        backendServerReceived: zegoAccess.server ?? null,
+        backendServerCandidatesReceived: getZegoServerDebugList(zegoAccess.serverCandidates),
+        backendServerArrayReceived: getZegoServerDebugList(zegoAccess.server),
         engineServerConfigured,
         engineServerSource,
         engineServerCount,
+        engineServerCandidates: serverCandidates.servers,
         zegoServers: serverCandidates.explicitServers,
         tokenGeneratedForRoomId: zegoRoomId,
         tokenGeneratedForUserID: zegoUserId,
@@ -1520,6 +1539,10 @@ const VideoCall = () => {
             engineServerCount,
             activeEngineServer,
             retryCount,
+            backendServerReceived: zegoAccess.server ?? null,
+            backendServerCandidatesReceived: getZegoServerDebugList(zegoAccess.serverCandidates),
+            backendServerArrayReceived: getZegoServerDebugList(zegoAccess.server),
+            engineServerList: Array.isArray(engineServer) ? engineServer : [],
           });
           const loginPromise = zg.loginRoom(
             zegoRoomId,
