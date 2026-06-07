@@ -58,6 +58,73 @@ const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 const getStreamID = (stream) => String(stream?.streamID || stream?.streamId || stream?.id || stream || "");
 
+const getTrackDebugInfo = (track) => {
+  if (!track) return null;
+  return {
+    id: track.id || "",
+    kind: track.kind || "",
+    label: track.label || "",
+    enabled: track.enabled,
+    muted: track.muted,
+    readyState: track.readyState || "",
+  };
+};
+
+const getMediaStreamDebugInfo = (stream) => {
+  const tracks = stream?.getTracks?.() || [];
+  const audioTracks = tracks.filter((track) => track.kind === "audio");
+  const videoTracks = tracks.filter((track) => track.kind === "video");
+
+  return {
+    hasStream: Boolean(stream),
+    streamId: stream?.id || "",
+    trackCount: tracks.length,
+    audioTrackCount: audioTracks.length,
+    videoTrackCount: videoTracks.length,
+    tracks: tracks.map(getTrackDebugInfo),
+  };
+};
+
+const getElementBoxDebugInfo = (element) => {
+  if (!element?.getBoundingClientRect) {
+    return {
+      elementAttached: false,
+      clientWidth: 0,
+      clientHeight: 0,
+      renderedWidth: 0,
+      renderedHeight: 0,
+    };
+  }
+
+  const rect = element.getBoundingClientRect();
+  return {
+    elementAttached: element.isConnected,
+    clientWidth: element.clientWidth || 0,
+    clientHeight: element.clientHeight || 0,
+    renderedWidth: Math.round(rect.width || 0),
+    renderedHeight: Math.round(rect.height || 0),
+  };
+};
+
+const getVideoElementDebugInfo = (video) => ({
+  ...getElementBoxDebugInfo(video),
+  autoplay: Boolean(video?.autoplay),
+  playsInline: Boolean(video?.playsInline),
+  muted: Boolean(video?.muted),
+  paused: Boolean(video?.paused),
+  readyState: video?.readyState ?? null,
+  networkState: video?.networkState ?? null,
+  srcObjectAttached: Boolean(video?.srcObject),
+  videoWidth: video?.videoWidth || 0,
+  videoHeight: video?.videoHeight || 0,
+});
+
+const getStreamListDebugInfo = (streamList = []) => streamList.map((stream) => ({
+  streamID: getStreamID(stream),
+  userID: String(stream?.user?.userID || stream?.user?.userId || stream?.userID || stream?.userId || ""),
+  extraInfo: stream?.extraInfo || "",
+}));
+
 const summarizeZegoError = (error) => ({
   code: error?.code ?? error?.errorCode ?? null,
   message: error?.message || error?.msg || String(error || "Unknown Zego error"),
@@ -233,33 +300,102 @@ const styleVideoElements = (container) => {
   container.querySelectorAll("video").forEach((video) => {
     video.autoplay = true;
     video.playsInline = true;
+    video.setAttribute("autoplay", "");
+    video.setAttribute("playsinline", "");
+    video.setAttribute("webkit-playsinline", "");
+    video.style.display = "block";
     video.style.width = "100%";
     video.style.height = "100%";
+    video.style.minWidth = "100%";
+    video.style.minHeight = "100%";
     video.style.objectFit = "cover";
     video.style.background = "#020617";
   });
 };
 
-const attachMediaStreamToContainer = async (container, stream, { muted = false } = {}) => {
-  if (!container || !stream) return null;
+const attachMediaStreamToContainer = async (container, stream, {
+  muted = false,
+  streamID = "",
+  mountLabel = "media",
+  logDebug,
+} = {}) => {
+  if (!container || !stream) {
+    logDebug?.("video element attach skipped", {
+      mountLabel,
+      remoteStreamID: streamID,
+      hasContainer: Boolean(container),
+      container: getElementBoxDebugInfo(container),
+      ...getMediaStreamDebugInfo(stream),
+    });
+    return null;
+  }
+
   container.innerHTML = "";
 
   const video = document.createElement("video");
   video.autoplay = true;
   video.playsInline = true;
+  video.setAttribute("autoplay", "");
+  video.setAttribute("playsinline", "");
+  video.setAttribute("webkit-playsinline", "");
   video.muted = muted;
   video.srcObject = stream;
+  video.style.display = "block";
   video.style.width = "100%";
   video.style.height = "100%";
+  video.style.minWidth = "100%";
+  video.style.minHeight = "100%";
   video.style.objectFit = "cover";
   video.style.background = "#020617";
+
+  const logVideoState = (event) => {
+    logDebug?.(event, {
+      mountLabel,
+      remoteStreamID: streamID,
+      container: getElementBoxDebugInfo(container),
+      video: getVideoElementDebugInfo(video),
+      ...getMediaStreamDebugInfo(stream),
+    });
+  };
+
+  video.addEventListener("loadedmetadata", () => logVideoState("video dimensions"));
+  video.addEventListener("resize", () => logVideoState("video dimensions"));
+  video.addEventListener("playing", () => logVideoState("stream playing"));
+
   container.appendChild(video);
+  logVideoState("video element attached");
 
   try {
     await video.play();
-  } catch {
-    // Autoplay can be blocked on some mobile browsers; the stream remains attached.
+    logVideoState("stream playing");
+  } catch (playError) {
+    logDebug?.("video play failed", {
+      mountLabel,
+      remoteStreamID: streamID,
+      playError: summarizeZegoError(playError),
+      video: getVideoElementDebugInfo(video),
+      ...getMediaStreamDebugInfo(stream),
+    });
+
+    if (!muted) {
+      try {
+        video.muted = true;
+        await video.play();
+        logVideoState("stream playing");
+      } catch (mutedPlayError) {
+        logDebug?.("muted video play failed", {
+          mountLabel,
+          remoteStreamID: streamID,
+          playError: summarizeZegoError(mutedPlayError),
+          video: getVideoElementDebugInfo(video),
+          ...getMediaStreamDebugInfo(stream),
+        });
+      }
+    }
   }
+
+  window.setTimeout(() => logVideoState("video dimensions"), 500);
+  window.setTimeout(() => logVideoState("video dimensions"), 2000);
 
   return video;
 };
@@ -276,6 +412,7 @@ const VideoCall = () => {
   const localViewRef = useRef(null);
   const remoteStreamsRef = useRef(new Map());
   const remoteViewsRef = useRef(new Map());
+  const remoteDisplayStreamIdRef = useRef("");
   const joinedRoomRef = useRef(false);
   const joinTimerRef = useRef(null);
   const autoEndTriggeredRef = useRef(false);
@@ -447,19 +584,26 @@ const VideoCall = () => {
 
     remoteViewsRef.current.forEach((view) => {
       try {
-        view?.destroy?.();
+        if (typeof view?.stop === "function") {
+          view.stop();
+        } else {
+          view?.stopVideo?.();
+          view?.stopAudio?.();
+          view?.destroy?.();
+        }
       } catch {
         // View cleanup is best effort; stream cleanup below is the source of truth.
       }
     });
     remoteViewsRef.current.clear();
 
-    remoteStreamsRef.current.forEach(({ stream }, streamID) => {
+    remoteStreamsRef.current.forEach(({ stream, videoElement }, streamID) => {
       try {
         zg?.stopPlayingStream?.(streamID);
       } catch {
         // The SDK may already be disconnected during teardown.
       }
+      if (videoElement) videoElement.srcObject = null;
       stopMediaStreamTracks(stream);
     });
     remoteStreamsRef.current.clear();
@@ -505,6 +649,7 @@ const VideoCall = () => {
     localStreamIdRef.current = "";
     joinedRoomRef.current = false;
     localViewRef.current = null;
+    remoteDisplayStreamIdRef.current = "";
 
     if (localPreviewRef.current) localPreviewRef.current.innerHTML = "";
     if (remoteVideoRef.current) remoteVideoRef.current.innerHTML = "";
@@ -756,12 +901,52 @@ const VideoCall = () => {
       await attachMediaStreamToContainer(container, localStream, { muted: true });
     };
 
+    const renderRemoteStream = async (streamID, remoteStream) => {
+      const container = remoteVideoRef.current;
+      if (!container || !remoteStream || cancelled) {
+        logZegoDebug("remote video render skipped", {
+          remoteStreamID: streamID,
+          hasContainer: Boolean(container),
+          container: getElementBoxDebugInfo(container),
+          ...getMediaStreamDebugInfo(remoteStream),
+        });
+        return null;
+      }
+
+      remoteDisplayStreamIdRef.current = streamID;
+      const currentRecord = remoteStreamsRef.current.get(streamID) || {};
+      if (currentRecord.videoElement && currentRecord.videoElement.srcObject !== remoteStream) {
+        currentRecord.videoElement.srcObject = null;
+      }
+
+      const videoElement = await attachMediaStreamToContainer(container, remoteStream, {
+        muted: false,
+        streamID,
+        mountLabel: "remote",
+        logDebug: logZegoDebug,
+      });
+
+      remoteStreamsRef.current.set(streamID, {
+        ...currentRecord,
+        stream: remoteStream,
+        videoElement,
+      });
+
+      return videoElement;
+    };
+
     const removeRemoteStream = (zg, streamID) => {
       const remoteRecord = remoteStreamsRef.current.get(streamID);
       const remoteView = remoteViewsRef.current.get(streamID);
 
       try {
-        remoteView?.destroy?.();
+        if (typeof remoteView?.stop === "function") {
+          remoteView.stop();
+        } else {
+          remoteView?.stopVideo?.();
+          remoteView?.stopAudio?.();
+          remoteView?.destroy?.();
+        }
       } catch {
         // The view may already be detached.
       }
@@ -772,15 +957,25 @@ const VideoCall = () => {
         // The stream may already be stopped.
       }
 
+      if (remoteRecord?.videoElement) remoteRecord.videoElement.srcObject = null;
       stopMediaStreamTracks(remoteRecord?.stream);
       remoteViewsRef.current.delete(streamID);
       remoteStreamsRef.current.delete(streamID);
 
-      if (remoteVideoRef.current && remoteStreamsRef.current.size === 0) {
+      const nextIds = Array.from(remoteStreamsRef.current.keys());
+      if (remoteDisplayStreamIdRef.current === streamID) {
+        remoteDisplayStreamIdRef.current = "";
+        const nextDisplayStreamID = nextIds[0];
+        const nextRecord = nextDisplayStreamID ? remoteStreamsRef.current.get(nextDisplayStreamID) : null;
+        if (nextDisplayStreamID && nextRecord?.stream) {
+          void renderRemoteStream(nextDisplayStreamID, nextRecord.stream);
+        }
+      }
+
+      if (remoteVideoRef.current && nextIds.length === 0) {
         remoteVideoRef.current.innerHTML = "";
       }
 
-      const nextIds = Array.from(remoteStreamsRef.current.keys());
       updateDiagnostics({
         remoteStreamsCount: nextIds.length,
         remoteStreamIDs: nextIds,
@@ -801,24 +996,17 @@ const VideoCall = () => {
 
       try {
         logZegoDebug("startPlayingStream", { remoteStreamID: streamID, retryCount });
-        const remoteStream = await zg.startPlayingStream(streamID);
+        const remoteStream = await zg.startPlayingStream(streamID, { audio: true, video: true });
         if (cancelled) return;
 
         remoteStreamsRef.current.set(streamID, { stream: remoteStream });
-        const container = remoteVideoRef.current;
-        if (container) container.innerHTML = "";
+        logZegoDebug("remote stream received", {
+          remoteStreamID: streamID,
+          retryCount,
+          ...getMediaStreamDebugInfo(remoteStream),
+        });
 
-        if (container && typeof remoteStream?.playVideo === "function") {
-          remoteStream.playVideo(container, { objectFit: "cover" });
-          styleVideoElements(container);
-        } else if (container && typeof zg.createRemoteStreamView === "function") {
-          const remoteView = zg.createRemoteStreamView(remoteStream);
-          remoteViewsRef.current.set(streamID, remoteView);
-          await remoteView.play(container, { objectFit: "cover" });
-          styleVideoElements(container);
-        } else if (container) {
-          await attachMediaStreamToContainer(container, remoteStream);
-        }
+        await renderRemoteStream(streamID, remoteStream);
 
         const nextIds = Array.from(remoteStreamsRef.current.keys());
         updateDiagnostics({
@@ -831,6 +1019,8 @@ const VideoCall = () => {
         logZegoDebug("remote stream playing", {
           remoteStreamID: streamID,
           remoteStreamsCount: nextIds.length,
+          displayedRemoteStreamID: remoteDisplayStreamIdRef.current,
+          ...getMediaStreamDebugInfo(remoteStream),
         });
       } catch (playError) {
         const playerError = summarizeZegoError(playError);
@@ -1119,26 +1309,91 @@ const VideoCall = () => {
             });
           }
         });
+        zg.on("playerVideoTrackUpdate", (streamID, track) => {
+          const remoteRecord = remoteStreamsRef.current.get(streamID);
+          const existingTrackIds = remoteRecord?.stream?.getTracks?.().map((item) => item.id) || [];
+          if (remoteRecord?.stream?.addTrack && track && !existingTrackIds.includes(track.id)) {
+            try {
+              remoteRecord.stream.addTrack(track);
+            } catch (trackError) {
+              logZegoDebug("player video track attach failed", {
+                remoteStreamID: streamID,
+                track: getTrackDebugInfo(track),
+                error: summarizeZegoError(trackError),
+              });
+            }
+          }
+          if (remoteRecord?.videoElement) {
+            remoteRecord.videoElement.srcObject = remoteRecord.stream;
+            remoteRecord.videoElement.play().catch(() => {});
+          }
+          logZegoDebug("player video track update", {
+            remoteStreamID: streamID,
+            track: getTrackDebugInfo(track),
+            displayedRemoteStreamID: remoteDisplayStreamIdRef.current,
+            ...getMediaStreamDebugInfo(remoteRecord?.stream),
+          });
+        });
+        zg.on("playerAudioTrackUpdate", (streamID, track) => {
+          const remoteRecord = remoteStreamsRef.current.get(streamID);
+          const existingTrackIds = remoteRecord?.stream?.getTracks?.().map((item) => item.id) || [];
+          if (remoteRecord?.stream?.addTrack && track && !existingTrackIds.includes(track.id)) {
+            try {
+              remoteRecord.stream.addTrack(track);
+            } catch (trackError) {
+              logZegoDebug("player audio track attach failed", {
+                remoteStreamID: streamID,
+                track: getTrackDebugInfo(track),
+                error: summarizeZegoError(trackError),
+              });
+            }
+          }
+          logZegoDebug("player audio track update", {
+            remoteStreamID: streamID,
+            track: getTrackDebugInfo(track),
+            ...getMediaStreamDebugInfo(remoteRecord?.stream),
+          });
+        });
+        zg.on("playQualityUpdate", (streamID, stats) => {
+          logZegoDebug("playQualityUpdate", {
+            remoteStreamID: streamID,
+            frameWidth: stats?.video?.frameWidth,
+            frameHeight: stats?.video?.frameHeight,
+            videoFPS: stats?.video?.videoFPS,
+            videoRenderFPS: stats?.video?.videoRenderFPS,
+            videoFramesDecoded: stats?.video?.videoFramesDecoded,
+            videoMuteState: stats?.video?.muteState,
+            audioFPS: stats?.audio?.audioFPS,
+            audioMuteState: stats?.audio?.muteState,
+          });
+        });
         zg.on("roomStreamUpdate", (updatedRoomID, updateType, streamList = [], extendedData) => {
+          const normalizedUpdateType = String(updateType || "").toUpperCase();
           const streamIDs = streamList.map(getStreamID).filter(Boolean);
           logZegoDebug("roomStreamUpdate", {
             updatedRoomID,
             updateType,
             streamIDs,
+            streams: getStreamListDebugInfo(streamList),
             remoteStreamsCount: remoteStreamsRef.current.size,
             extendedData,
             activeEngineServer,
           });
 
-          if (updateType === "ADD") {
+          if (normalizedUpdateType === "ADD") {
             streamIDs.forEach((streamID) => {
               if (streamID !== localStreamIdRef.current) {
+                logZegoDebug("remote stream added", {
+                  remoteStreamID: streamID,
+                  remoteStreamsCount: remoteStreamsRef.current.size,
+                  activeEngineServer,
+                });
                 playRemoteStream(zg, streamID);
               }
             });
           }
 
-          if (updateType === "DELETE") {
+          if (normalizedUpdateType === "DELETE") {
             streamIDs.forEach((streamID) => removeRemoteStream(zg, streamID));
           }
         });
