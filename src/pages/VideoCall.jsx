@@ -15,7 +15,7 @@ const CALL_JOIN_EARLY_MINUTES = 30;
 const CONSENT_STORAGE_PREFIX = "video-call-consent";
 const ZEGO_SLOW_LOGIN_MS = 10000;
 const ZEGO_LOGIN_TIMEOUT_MS = 30000;
-const SDK_DEFAULT_EMPTY_SERVER = "SDK_DEFAULT_EMPTY_SERVER";
+const UNCONFIGURED_ZEGO_SERVER_LABEL = "NO_CONFIGURED_ZEGO_SERVER";
 const ZEGO_RETRY_MESSAGE = "Video server connection timed out. Retrying alternate server...";
 const ZEGO_LEGACY_RTC_SERVER = "wss://rtc-api.zego.im/ws";
 const getDefaultZegoWebServers = (appId = 0) => [
@@ -229,9 +229,9 @@ const getZegoServerDebugList = (server) => {
 
 const getZegoServerLabel = (server) => {
   if (Array.isArray(server)) {
-    return server.length > 0 ? `SERVER_ARRAY_${server.length}` : SDK_DEFAULT_EMPTY_SERVER;
+    return server.length > 0 ? `SERVER_ARRAY_${server.length}` : UNCONFIGURED_ZEGO_SERVER_LABEL;
   }
-  return server || SDK_DEFAULT_EMPTY_SERVER;
+  return server || UNCONFIGURED_ZEGO_SERVER_LABEL;
 };
 
 const getZegoEngineServerCandidates = (zegoAccess = {}, appId = 0) => {
