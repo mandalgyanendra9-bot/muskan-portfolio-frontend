@@ -34,6 +34,7 @@ const Security = lazy(() => import("./pages/Security"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
 const Refund = lazy(() => import("./pages/Refund"));
+const ZegoSmokeTest = lazy(() => import("./pages/ZegoSmokeTest"));
 
 const AGE_VERIFIED_STORAGE_KEY = "ageVerified18Plus";
 const AGE_VERIFIED_COOKIE_KEY = "ageVerified18Plus";
@@ -102,6 +103,8 @@ function App() {
             <Route path="/experts" element={<Experts />} />
             <Route path="/expert" element={<Experts />} />
             <Route path="/live" element={<Live />} />
+            <Route path="/zego-smoke-test" element={<ZegoSmokeTest />} />
+            <Route path="/zego-smoke-test/:roomId" element={<ZegoSmokeTest />} />
             <Route path="/ai" element={<AIFeatures />} />
             <Route path="/security" element={<Security />} />
             <Route path="/contact" element={<Contact />} />

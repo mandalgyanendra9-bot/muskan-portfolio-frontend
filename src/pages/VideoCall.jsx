@@ -14,16 +14,12 @@ const API_URL = import.meta.env.VITE_API_URL || "";
 const CALL_JOIN_EARLY_MINUTES = 30;
 const CONSENT_STORAGE_PREFIX = "video-call-consent";
 const ZEGO_SLOW_LOGIN_MS = 10000;
-const ZEGO_LOGIN_TIMEOUT_MS = 30000;
+const ZEGO_LOGIN_TIMEOUT_MS = 60000;
 const UNCONFIGURED_ZEGO_SERVER_LABEL = "NO_CONFIGURED_ZEGO_SERVER";
 const ZEGO_RETRY_MESSAGE = "Video server connection timed out. Retrying alternate server...";
-const ZEGO_LEGACY_RTC_SERVER = "wss://rtc-api.zego.im/ws";
-const getDefaultZegoWebServers = (appId = 0) => [
-  Number.isSafeInteger(appId) && appId > 0 ? `wss://webliveroom${appId}-api.zegocloud.com/ws` : "",
-  "wss://webliveroom-api.zegocloud.com/ws",
-  "wss://webliveroom-api.zego.im/ws",
-].filter(Boolean);
-const FRONTEND_ZEGO_WEB_SERVER = import.meta.env.VITE_ZEGO_WEB_SERVER_URL || import.meta.env.VITE_ZEGO_SERVER || import.meta.env.VITE_ZEGO_SERVER_URL || "";
+const ZEGO_WEB_SERVER = "wss://webliveroom384324702-api.zegocloud.com/ws";
+const getDefaultZegoWebServers = () => [ZEGO_WEB_SERVER];
+const FRONTEND_ZEGO_WEB_SERVER = ZEGO_WEB_SERVER;
 
 const CALL_STATES = {
   checking: "Checking camera/microphone...",
@@ -193,13 +189,10 @@ const normalizeZegoServers = (server) => {
   const normalizeOne = (value) => {
     const text = String(value || "").trim();
     if (!text) return [];
-    const legacyServer = ZEGO_LEGACY_RTC_SERVER.replace(/\/+$/, "").toLowerCase();
-    if (text.replace(/\/+$/, "").toLowerCase() === legacyServer) return [];
     return text
       .split(",")
       .map((item) => item.trim())
-      .filter((item) => /^(wss?|https?):\/\//i.test(item))
-      .filter((item) => item.replace(/\/+$/, "").toLowerCase() !== legacyServer);
+      .filter((item) => /^(wss?|https?):\/\//i.test(item));
   };
 
   if (Array.isArray(server)) {
@@ -238,16 +231,18 @@ const getZegoEngineServerCandidates = (zegoAccess = {}, appId = 0) => {
   const backendServers = uniqueZegoServers([
     ...normalizeZegoServers(zegoAccess.serverCandidates),
     ...normalizeZegoServers(zegoAccess.server),
-  ]);
+  ]).filter((server) => String(server || "").replace(/\/+$/, "").toLowerCase() === ZEGO_WEB_SERVER.toLowerCase());
   const frontendServers = normalizeZegoServers(FRONTEND_ZEGO_WEB_SERVER);
   const defaultServers = getDefaultZegoWebServers(appId);
-  const explicitServers = uniqueZegoServers([...backendServers, ...frontendServers, ...defaultServers]);
+  const explicitServers = uniqueZegoServers([
+    ...backendServers,
+    ...frontendServers.filter((server) => String(server || "").replace(/\/+$/, "").toLowerCase() === ZEGO_WEB_SERVER.toLowerCase()),
+    ...defaultServers,
+  ]);
   const candidates = explicitServers.length > 0 ? [explicitServers] : [];
   const sources = [
-    backendServers.length > 0 ? "backend" : "",
-    frontendServers.length > 0 ? "frontend_env" : "",
-    "documented_global_fallbacks",
-  ].filter(Boolean);
+    backendServers.length > 0 ? "backend_pinned" : "pinned_test_server",
+  ];
 
   return {
     servers: candidates,
@@ -1528,6 +1523,7 @@ const VideoCall = () => {
           });
           logZegoDebug("loginRoom start", {
             appId: zegoAppId,
+            appIdType: typeof zegoAppId,
             roomId: zegoRoomId,
             userId: zegoUserId,
             tokenReceived,
@@ -1543,6 +1539,14 @@ const VideoCall = () => {
             backendServerCandidatesReceived: getZegoServerDebugList(zegoAccess.serverCandidates),
             backendServerArrayReceived: getZegoServerDebugList(zegoAccess.server),
             engineServerList: Array.isArray(engineServer) ? engineServer : [],
+          });
+          console.log("[Zego Video] loginRoom preflight", {
+            appId: zegoAppId,
+            appIdType: typeof zegoAppId,
+            roomId: zegoRoomId,
+            userID: zegoUserId,
+            tokenLength: zegoToken.length,
+            serverCandidates: serverCandidates.explicitServers,
           });
           const loginPromise = zg.loginRoom(
             zegoRoomId,
