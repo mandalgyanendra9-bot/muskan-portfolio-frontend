@@ -3,9 +3,78 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { useParams } from "react-router-dom";
 
-const API_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || "";
+const API_URL = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || "https://muskan-portfolio-backend.onrender.com";
 const ZEGO_LOGIN_TIMEOUT_MS = 60000;
 const ZEGO_WEB_SERVER = "wss://webliveroom384324702-api.zegocloud.com/ws";
+
+const buildApiUrl = (path, params = {}) => {
+  const baseUrl = String(API_URL || "").replace(/\/+$/, "");
+  const normalizedPath = path.startsWith("http") ? path : `${baseUrl}${path}`;
+  const query = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    const text = String(value).trim();
+    if (text) query.set(key, text);
+  });
+
+  const queryString = query.toString();
+  if (!queryString) return normalizedPath;
+  return `${normalizedPath}${normalizedPath.includes("?") ? "&" : "?"}${queryString}`;
+};
+
+const formatResponseBody = (value) => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const summarizeAxiosError = (error, fallbackUrl = "") => ({
+  url: error?.config?.url || error?.request?.responseURL || fallbackUrl || "",
+  status: error?.response?.status ?? null,
+  responseBody: error?.response?.data ?? null,
+  message: error?.message || String(error || "Request failed"),
+  code: error?.code ?? "",
+  method: String(error?.config?.method || "GET").toUpperCase(),
+});
+
+const summarizeSmokeTokenResponse = (data = {}) => {
+  const token = String(data?.token || "");
+  return {
+    appId: Number(data?.appId ?? 0),
+    appIdType: data?.appIdType ?? typeof data?.appId,
+    roomId: String(data?.roomId || ""),
+    userId: String(data?.userId || ""),
+    tokenLength: token.length,
+    tokenPrefix: token.slice(0, 12),
+    serverCandidates: Array.isArray(data?.serverCandidates) ? data.serverCandidates : [],
+    tokenExpiresAt: data?.tokenExpiresAt || null,
+    generatedRoomId: String(data?.generatedRoomId || data?.roomId || ""),
+    tokenPayloadRoomId: String(data?.tokenPayloadRoomId || data?.roomId || ""),
+    tokenPayloadUserId: String(data?.tokenPayloadUserId || data?.userId || ""),
+  };
+};
+
+const summarizeRequestFailure = (stage, requestError, publicDebug = null) => ({
+  success: false,
+  stage,
+  elapsedMs: 0,
+  error: {
+    code: requestError.status ? `HTTP_${requestError.status}` : requestError.code || "REQUEST_FAILED",
+    message: requestError.status
+      ? `${stage} failed with HTTP ${requestError.status}`
+      : requestError.message || `${stage} failed`,
+    url: requestError.url || "",
+    status: requestError.status,
+    responseBody: requestError.responseBody,
+  },
+  request: requestError,
+  publicDebug,
+});
 
 const getIdString = (value) => {
   if (!value) return "";
@@ -50,6 +119,7 @@ const withLoginTimeout = (promise, timeoutMs) => {
       timeoutError.code = "LOGIN_TIMEOUT";
       timeoutError.errorCode = "LOGIN_TIMEOUT";
       timeoutError.loginTimeout = true;
+      timeoutError.loginElapsedMs = timeoutMs;
       reject(timeoutError);
     }, timeoutMs);
   });
@@ -74,9 +144,11 @@ const ZegoSmokeTest = () => {
   const [publicDebug, setPublicDebug] = useState(null);
   const [tokenDebug, setTokenDebug] = useState(null);
   const [loginDebug, setLoginDebug] = useState(null);
+  const [requestDebug, setRequestDebug] = useState([]);
   const [copyState, setCopyState] = useState("Copy Zego Debug");
 
-  const currentUserId = getIdString(user?._id);
+  const currentUserId = getIdString(user?._id) || String(user?.id || "").trim();
+  const smokeUserId = currentUserId || "smoke-test-user";
 
   const cleanupEngine = () => {
     const engine = engineRef.current;
@@ -101,6 +173,52 @@ const ZegoSmokeTest = () => {
     engineRef.current = null;
     cleanupRoomRef.current = "";
     joinedRoomRef.current = false;
+  };
+
+  const appendRequestDebug = (record) => {
+    setRequestDebug((current) => [...(current || []), record]);
+  };
+
+  const requestJson = async ({ label, path, params = {}, redactResponse }) => {
+    const requestUrl = buildApiUrl(path, params);
+    const startedAt = Date.now();
+
+    try {
+      const response = await axios.get(requestUrl, { timeout: 30000 });
+      const responseBody = typeof redactResponse === "function" ? redactResponse(response.data) : response.data;
+      const record = {
+        label,
+        ok: true,
+        method: "GET",
+        url: response.config?.url || requestUrl,
+        status: response.status,
+        responseBody,
+        elapsedMs: Date.now() - startedAt,
+      };
+      appendRequestDebug(record);
+      console.log(`[Zego Smoke Test] ${label} success`, record);
+      return response.data;
+    } catch (error) {
+      const requestError = summarizeAxiosError(error, requestUrl);
+      const record = {
+        label,
+        ok: false,
+        ...requestError,
+        elapsedMs: Date.now() - startedAt,
+      };
+      appendRequestDebug(record);
+      console.error(`[Zego Smoke Test] ${label} failed`, record);
+      const wrappedError = new Error(`${label} failed`);
+      wrappedError.requestDebug = record;
+      wrappedError.originalError = error;
+      throw wrappedError;
+    }
+  };
+
+  const formatRequestFailureMessage = (label, requestError) => {
+    const statusText = requestError.status ? `HTTP ${requestError.status}` : requestError.code || "REQUEST_FAILED";
+    const bodyText = requestError.responseBody ? ` body=${formatResponseBody(requestError.responseBody)}` : "";
+    return `${label} failed: ${statusText} at ${requestError.url || "unknown URL"}${bodyText}`;
   };
 
   useEffect(() => () => {
@@ -137,6 +255,7 @@ const ZegoSmokeTest = () => {
       message,
       roomState,
       loginElapsedMs,
+      requestDebug,
       pinnedServer: ZEGO_WEB_SERVER,
     };
 
@@ -158,8 +277,15 @@ const ZegoSmokeTest = () => {
       return;
     }
 
-    const authToken = localStorage.getItem("token") || "";
-    const normalizedUserId = currentUserId || "";
+    const normalizedUserId = smokeUserId;
+    const publicDebugUrl = buildApiUrl("/api/debug/zego-public-safe", {
+      roomId: normalizedRoomId,
+      userId: normalizedUserId,
+    });
+    const smokeTokenUrl = buildApiUrl("/api/debug/zego-smoke-token", {
+      roomId: normalizedRoomId,
+      userId: normalizedUserId,
+    });
 
     cleanupEngine();
     setRunning(true);
@@ -170,29 +296,69 @@ const ZegoSmokeTest = () => {
     setPublicDebug(null);
     setTokenDebug(null);
     setLoginDebug(null);
+    setRequestDebug([]);
 
     try {
-      const publicParams = new URLSearchParams({
-        roomId: normalizedRoomId,
+    let publicData;
+    try {
+      publicData = await requestJson({
+        label: "publicDebug",
+        path: "/api/debug/zego-public-safe",
+        params: {
+          roomId: normalizedRoomId,
+          userId: normalizedUserId,
+        },
       });
-      if (normalizedUserId) publicParams.set("userId", normalizedUserId);
-
-      const { data: publicData } = await axios.get(`${API_URL}/api/debug/zego-public-safe?${publicParams.toString()}`);
       setPublicDebug(publicData);
-
-      if (!authToken) {
-        throw new Error("Missing auth token. Log in before running the smoke test.");
-      }
-
-      setPhase("fetching");
-      setMessage("Fetching the booking token...");
-      const { data: zegoAccess } = await axios.get(`${API_URL}/api/bookings/room/${normalizedRoomId}/zego-token`, {
-        headers: { Authorization: authToken },
+    } catch (error) {
+      const requestError = error?.requestDebug || summarizeAxiosError(error, publicDebugUrl);
+      const failureSummary = summarizeRequestFailure("public-debug", requestError);
+      setPhase("failed");
+      setMessage(formatRequestFailureMessage("Public debug request", requestError));
+      setPublicDebug({
+        success: false,
+        stage: "public-debug",
+        request: requestError,
+        error: requestError,
       });
+      setTokenDebug(failureSummary);
+      setLoginDebug(failureSummary);
+      console.error("[Zego Smoke Test] public debug request failed", {
+        requestError,
+      });
+      return;
+    }
 
-      const appId = Number(zegoAccess.appId ?? zegoAccess.appID ?? publicData.appId ?? 0);
+    let zegoAccess;
+    try {
+      setPhase("fetching");
+      setMessage("Requesting public smoke token...");
+      zegoAccess = await requestJson({
+        label: "smokeToken",
+        path: "/api/debug/zego-smoke-token",
+        params: {
+          roomId: normalizedRoomId,
+          userId: normalizedUserId,
+        },
+        redactResponse: summarizeSmokeTokenResponse,
+      });
+    } catch (error) {
+      const requestError = error?.requestDebug || summarizeAxiosError(error, smokeTokenUrl);
+      const failureSummary = summarizeRequestFailure("smoke-token", requestError, publicData);
+      setPhase("failed");
+      setMessage(formatRequestFailureMessage("Smoke token request", requestError));
+      setTokenDebug(failureSummary);
+      setLoginDebug(failureSummary);
+      console.error("[Zego Smoke Test] smoke token request failed", {
+        requestError,
+        publicDebug: publicData,
+      });
+      return;
+    }
+
+      const appId = Number(zegoAccess.appId ?? publicData.appId ?? 0);
       const zegoRoomId = String(zegoAccess.roomId || zegoAccess.generatedRoomId || normalizedRoomId || "");
-      const zegoUserId = String(zegoAccess.userId ?? zegoAccess.userID ?? normalizedUserId ?? "");
+      const zegoUserId = String(zegoAccess.userId ?? zegoAccess.tokenPayloadUserId ?? normalizedUserId ?? "");
       const zegoToken = String(zegoAccess.token || "");
       const tokenServerCandidates = Array.isArray(zegoAccess.serverCandidates) && zegoAccess.serverCandidates.length > 0
         ? zegoAccess.serverCandidates
@@ -200,6 +366,7 @@ const ZegoSmokeTest = () => {
             .filter((server) => server.replace(/\/+$/, "").toLowerCase() === ZEGO_WEB_SERVER.toLowerCase())
         : [];
       const serverCandidates = tokenServerCandidates.length > 0 ? tokenServerCandidates : [ZEGO_WEB_SERVER];
+      const tokenPrefix = zegoToken.slice(0, 12);
 
       const tokenSummary = {
         appId,
@@ -207,13 +374,12 @@ const ZegoSmokeTest = () => {
         roomId: zegoRoomId,
         userId: zegoUserId,
         tokenLength: zegoToken.length,
+        tokenPrefix,
         serverCandidates,
         generatedRoomId: zegoAccess.generatedRoomId || zegoRoomId,
         tokenPayloadRoomId: zegoAccess.tokenPayloadRoomId || zegoRoomId,
         tokenPayloadUserId: zegoAccess.tokenPayloadUserId || zegoUserId,
         tokenExpiresAt: zegoAccess.tokenExpiresAt || null,
-        serverSecretExists: Boolean(zegoAccess.serverSecretExists),
-        serverSecretLength: Number(zegoAccess.serverSecretLength || 0),
       };
       setTokenDebug(tokenSummary);
 
@@ -223,6 +389,7 @@ const ZegoSmokeTest = () => {
         roomId: zegoRoomId,
         userID: zegoUserId,
         tokenLength: zegoToken.length,
+        tokenPrefix,
         serverCandidates,
       });
 
@@ -273,11 +440,21 @@ const ZegoSmokeTest = () => {
         success: loginSuccess,
         elapsedMs,
         result: typeof loginResult === "object" ? loginResult : { value: loginResult },
+        appId,
+        appIdType: typeof appId,
+        roomId: zegoRoomId,
+        userId: zegoUserId,
+        tokenLength: zegoToken.length,
+        tokenPrefix,
+        serverCandidates,
       };
       setLoginDebug(loginSummary);
 
       if (!loginSuccess) {
-        throw new Error("loginRoom returned unsuccessful result");
+        const loginFailure = new Error("loginRoom returned unsuccessful result");
+        loginFailure.loginElapsedMs = elapsedMs;
+        loginFailure.loginResult = loginResult;
+        throw loginFailure;
       }
 
       joinedRoomRef.current = true;
@@ -285,7 +462,7 @@ const ZegoSmokeTest = () => {
       setMessage("loginRoom succeeded. No stream was created or published.");
     } catch (error) {
       const loginError = getZegoSdkErrorDetails(error, "Unable to join video server.");
-      const elapsedMs = error?.loginElapsedMs || loginElapsedMs || 0;
+      const elapsedMs = error?.loginElapsedMs ?? loginElapsedMs ?? 0;
       setPhase("failed");
       setMessage(loginError.message);
       setLoginElapsedMs(elapsedMs);
@@ -294,11 +471,13 @@ const ZegoSmokeTest = () => {
         success: false,
         elapsedMs,
         error: loginError,
+        requestDebug,
       }));
       console.error("[Zego Smoke Test] login failed", {
         error: loginError,
         publicDebug,
         tokenDebug,
+        requestDebug,
       });
       cleanupEngine();
     } finally {
@@ -310,6 +489,7 @@ const ZegoSmokeTest = () => {
     publicDebug,
     tokenDebug,
     loginDebug,
+    requestDebug,
     phase,
     message,
     roomState,
@@ -375,7 +555,7 @@ const ZegoSmokeTest = () => {
             <p className="mt-2 text-sm text-slate-200">{message}</p>
           </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <div className="mt-6 grid gap-4 lg:grid-cols-4">
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <p className="text-xs font-bold uppercase tracking-[0.25em] text-slate-500">Public debug</p>
               <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words text-xs text-slate-200">
@@ -392,6 +572,12 @@ const ZegoSmokeTest = () => {
               <p className="text-xs font-bold uppercase tracking-[0.25em] text-slate-500">Login debug</p>
               <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words text-xs text-slate-200">
                 {JSON.stringify(loginDebug, null, 2)}
+              </pre>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-xs font-bold uppercase tracking-[0.25em] text-slate-500">Request debug</p>
+              <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap break-words text-xs text-slate-200">
+                {JSON.stringify(requestDebug, null, 2)}
               </pre>
             </div>
           </div>
